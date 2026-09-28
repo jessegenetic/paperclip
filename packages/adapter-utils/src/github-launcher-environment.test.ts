@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -305,5 +307,81 @@ describe("managed GitHub launcher environment", () => {
       runId: "run-failure", target: fixture.target, cwd: fixture.root, env: {},
     })).rejects.toThrow("Could not resolve remote PATH for managed GitHub launchers");
     expect(fixture.runner.execute).toHaveBeenCalledTimes(1);
+  });
+
+  // gh reads its keychain-backed secure storage, which GH_CONFIG_DIR cannot
+  // namespace. Staging an empty configuration directory therefore withholds
+  // nothing on its own, so assert the launcher hands gh a credential in every
+  // broker outcome: the issued one when a managed identity exists, and an
+  // unusable sentinel when it does not.
+  it.each([
+    { name: "issues no managed identity", body: { status: "unavailable", source: "personal",
+      reason: "No managed GitHub identity is available for this run", env: {} },
+      expected: "paperclip-github-identity-withheld" },
+    { name: "answers with an unroutable error", status: 500, body: { error: "broker down" },
+      expected: "paperclip-github-identity-withheld" },
+    { name: "omits GITHUB_TOKEN from an issued identity", body: { status: "available",
+      env: { GH_TOKEN: "issued-managed-token" } },
+      expected: "issued-managed-token", expectedGithubToken: "paperclip-github-identity-withheld" },
+    { name: "issues a managed identity", body: { status: "available",
+      env: { GH_TOKEN: "issued-managed-token", GITHUB_TOKEN: "issued-managed-token" } },
+      expected: "issued-managed-token" },
+  ])("hands gh a credential when the broker $name", async (scenario) => {
+    const fixture = await sandbox("usr/bin");
+    // Report the credential gh would actually authenticate with.
+    await writeFile(path.join(fixture.bin, "gh"),
+      '#!/bin/sh\nprintf \'%s\\n%s\\n\' "$GH_TOKEN" "$GITHUB_TOKEN"\n', { mode: 0o700 });
+    const broker = createServer((_request, response) => {
+      response.writeHead(scenario.status ?? 200, { "content-type": "application/json" });
+      response.end(JSON.stringify(scenario.body));
+    });
+    await new Promise<void>((resolve) => broker.listen(0, "127.0.0.1", resolve));
+    const { port } = broker.address() as AddressInfo;
+    try {
+      const env = await prepareGitHubOperationLaunchers({
+        runId: "run-credential-containment", target: fixture.target, cwd: fixture.root,
+        env: githubBrokerEnvironment({}, { url: `http://127.0.0.1:${port}`, token: "capability" }),
+      });
+      const result = await fixture.runner.execute({
+        command: path.join(env.PAPERCLIP_GITHUB_LAUNCHER_DIR, "gh"), args: ["auth", "token"], env,
+      });
+      expect(result.exitCode, result.stderr).toBe(0);
+      const [ghToken, githubToken] = result.stdout.split("\n");
+      expect(ghToken).toBe(scenario.expected);
+      expect(githubToken).toBe(scenario.expectedGithubToken ?? scenario.expected);
+      // A host credential reaching the child is the bypass this guards against.
+      expect(result.stdout).not.toMatch(/gh[pousr]_[A-Za-z0-9]{20,}/);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        broker.close((error) => (error ? reject(error) : resolve())));
+    }
+  });
+
+  // Git has the same keychain reachability as gh: Apple Git ships an
+  // osxkeychain helper in its own system configuration and keeps reading that
+  // file when GIT_CONFIG_SYSTEM is redirected. The no-system switch is what
+  // drops it, so assert the launcher sets it alongside the helper reset.
+  it("denies git every host credential helper", async () => {
+    const fixture = await sandbox("usr/bin");
+    await writeFile(path.join(fixture.bin, "git"),
+      '#!/bin/sh\nprintf \'%s\\n\' "$GIT_CONFIG_NOSYSTEM"\n', { mode: 0o700 });
+    const env = await prepareGitHubOperationLaunchers({
+      runId: "run-git-containment", target: fixture.target, cwd: fixture.root,
+      env: githubBrokerEnvironment({}, { url: "", token: "" }),
+    });
+    const launcher = path.join(env.PAPERCLIP_GITHUB_LAUNCHER_DIR, "git");
+    const reported = await fixture.runner.execute({ command: launcher, args: ["config", "-l"], env });
+    expect(reported.stdout.trim(), reported.stderr).toBe("1");
+
+    // A helper configured for the host user must not answer for the child.
+    await writeFile(path.join(fixture.root, ".gitconfig"),
+      '[credential]\n\thelper = "!f() { echo username=host; echo password=HOST-SECRET; }; f"\n');
+    await rm(path.join(fixture.bin, "git"));
+    const filled = await fixture.runner.execute({
+      command: launcher, args: ["credential", "fill"], env,
+      stdin: "protocol=https\nhost=example.invalid\n\n",
+    });
+    expect(filled.exitCode).not.toBe(0);
+    expect(filled.stdout).not.toContain("HOST-SECRET");
   });
 });
