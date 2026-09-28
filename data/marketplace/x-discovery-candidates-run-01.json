@@ -1,0 +1,1774 @@
+{
+  "metadata": {
+    "pipeline_run": "x-discovery-run-01",
+    "generated_at": "2026-09-28T03:35:36.089128+00:00",
+    "issue": "LOL-112",
+    "note": "Reviewable artifact only \u2014 NOT published to catalog"
+  },
+  "summary": {
+    "total_candidates": 55,
+    "non_duplicates": 42
+  },
+  "candidates": [
+    {
+      "candidate_id": "x-x-discovery-run-01-86f309e1866b",
+      "name": "Clever",
+      "url": "https://apps.apple.com",
+      "domain": "apps.apple.com",
+      "categories": [
+        "general_edtech"
+      ],
+      "confidence_note": "Discovered via X query \"app_launches\" on 2026-09-28T03:35:36.088301+00:00. @\u2728Take a look at the New app \"Play &amp; Tinker, Alfie Atkins\", coming Sep 24! \ud83e\udd73\n\nJoin Alfie on a marble-rolling adventure full of twists, turns, and clever contraptions!\n\niOS: https://t.co/hTxKreRJPz\n\nAndroid: https://t.co/toIcTzrRsc\n\n#kids #children #game #learning #physics #logic https://t.co/zCiRO5SjMy has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102790098970358138",
+          "text_snippet": "\u2728Take a look at the New app \"Play &amp; Tinker, Alfie Atkins\", coming Sep 24! \ud83e\udd73\n\nJoin Alfie on a marble-rolling adventure full of twists, turns, and clever contraptions!\n\niOS: https://t.co/hTxKreRJPz\n\nAndroid: https://t.co/toIcTzrRsc\n\n#kids #children #game #learning #physics #log",
+          "url": "https://x.com/user/status/2102790098970358138"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "app_launches"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1d6acc815353",
+      "name": "Scratch",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2102530365604987032",
+          "text_snippet": "@jobryan @SuperhumanMail Sounds dumb but my muscle memory has been totally erased. I'm just on a brand new app learning to use it from scratch \n\nIf that's true might as well look at others!",
+          "url": "https://x.com/user/status/2102530365604987032"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "app_launches"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-e3318e2f2daf",
+      "name": "Duolingo",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "general_edtech"
+      ],
+      "confidence_note": "Discovered via X query \"app_launches\" on 2026-09-28T03:35:36.088301+00:00. @This 14 second reel got 9M views.\n\nThe hook is basically:\n\n\u201cBreaking up with Pinterest because this new app is so much better.\u201d\n\nYou can use the exact same psychology for almost any app:\n\nDuolingo:\n\u201cDeleting Duolingo because this app makes learning Spanish way more fun.\u201d\n\nNotion: https://t.co/mrgTV3THvy has +249 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102154375288529006",
+          "text_snippet": "This 14 second reel got 9M views.\n\nThe hook is basically:\n\n\u201cBreaking up with Pinterest because this new app is so much better.\u201d\n\nYou can use the exact same psychology for almost any app:\n\nDuolingo:\n\u201cDeleting Duolingo because this app makes learning Spanish way more fun.\u201d\n\nNotion:",
+          "url": "https://x.com/user/status/2102154375288529006"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "app_launches"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a6d1e56d78c3",
+      "name": "Ixl",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "general_edtech"
+      ],
+      "confidence_note": "Discovered via X query \"homeschool_curricula\" on 2026-09-28T03:35:36.088301+00:00. @Current @IXLLearning language arts diagnostic score for my 10 year old. I worry about our homeschooling all the time. Like am I holding my kid back? Do we need more structure? Better environment? Should I put him in 5th grade with kids his age? I just know he would be bored out https://t.co/EK4NKcSqOM has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104285837177344246",
+          "text_snippet": "Current @IXLLearning language arts diagnostic score for my 10 year old. I worry about our homeschooling all the time. Like am I holding my kid back? Do we need more structure? Better environment? Should I put him in 5th grade with kids his age? I just know he would be bored out h",
+          "url": "https://x.com/user/status/2104285837177344246"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "homeschool_curricula"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-66490ca83d15",
+      "name": "Scratch",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104254041274655110",
+          "text_snippet": "Picture Comprehension Prompt Vault \u2013 6,750 Picture Comprehension Prompts\n\nCreate more kids\u2019 worksheets without starting from scratch every time.\n\n6,750\nTotal Prompts\n4\nOffer Levels\n270\nTheme Collections\nPicture Comprehension Prompt Vault is a massive collection of detailed AI htt",
+          "url": "https://x.com/user/status/2104254041274655110"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "homeschool_curricula"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-6f79eccdd5a0",
+      "name": "K12",
+      "url": "https://k-12readinglist.com",
+      "domain": "k-12readinglist.com",
+      "categories": [
+        "general_edtech"
+      ],
+      "confidence_note": "Discovered via X query \"homeschool_curricula\" on 2026-09-28T03:35:36.088301+00:00. @Useful resources for children on the autistic spectrum - ideal for classroom settings and homeschooling #autism #add #EdChat #K12 https://t.co/6LZjG3Z9ZY has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104239851885273590",
+          "text_snippet": "Useful resources for children on the autistic spectrum - ideal for classroom settings and homeschooling #autism #add #EdChat #K12 https://t.co/6LZjG3Z9ZY",
+          "url": "https://x.com/user/status/2104239851885273590"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "homeschool_curricula"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-2b69baa6108b",
+      "name": "Beast Academy",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @@NielsHoven Occasionally parents in the Beast Academy forums ask what age is appropriate to start. They\u2019ll be thinking about trying Level 1, and a bunch of parents will discourage them: \u201cIt\u2019s too early,\u201d \u201cThey should just play more,\u201d \u201cWait until they\u2019re older.\u201d has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104209454673916406",
+          "text_snippet": "@NielsHoven Occasionally parents in the Beast Academy forums ask what age is appropriate to start. They\u2019ll be thinking about trying Level 1, and a bunch of parents will discourage them: \u201cIt\u2019s too early,\u201d \u201cThey should just play more,\u201d \u201cWait until they\u2019re older.\u201d",
+          "url": "https://x.com/user/status/2104209454673916406"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-e3aee57ee72c",
+      "name": "Art of Problem Solving",
+      "url": "https://artofproblemsolving.com",
+      "domain": "artofproblemsolving.com",
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @\u3010\u6709\u7528\u305d\u3046\u306a\u30ea\u30f3\u30af\u2460\u3011\n\u30fbArt of Problem Solving\nhttps://t.co/wYguEPMAdw\n\u30fbOnline Math Contest\nhttps://t.co/HtjKa9IMxY\n\u30fbCanada IMO Traning\nhttps://t.co/OL0aK1cMit has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104104893414023342",
+          "text_snippet": "\u3010\u6709\u7528\u305d\u3046\u306a\u30ea\u30f3\u30af\u2460\u3011\n\u30fbArt of Problem Solving\nhttps://t.co/wYguEPMAdw\n\u30fbOnline Math Contest\nhttps://t.co/HtjKa9IMxY\n\u30fbCanada IMO Traning\nhttps://t.co/OL0aK1cMit",
+          "url": "https://x.com/user/status/2104104893414023342"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-ad8335111ef5",
+      "name": "Art Of Problem Solving",
+      "url": "https://twitter.com",
+      "domain": "twitter.com",
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @The \"Art of Problem Solving\" series is a collection of educational resources designed to enhance mathematical problem-solving skills. Key titles include:\n\n1.  \u201cIntroduction to Geometry. \u201c by Richard Rusczyk (2nd Edition) - This book introduces geometric concepts and develops https://t.co/GxJvdCJ8zX has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2103851638813491424",
+          "text_snippet": "The \"Art of Problem Solving\" series is a collection of educational resources designed to enhance mathematical problem-solving skills. Key titles include:\n\n1.  \u201cIntroduction to Geometry. \u201c by Richard Rusczyk (2nd Edition) - This book introduces geometric concepts and develops http",
+          "url": "https://x.com/user/status/2103851638813491424"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-3327b7756d81",
+      "name": "Art Of Problem Solving",
+      "url": "https://amzn.to",
+      "domain": "amzn.to",
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @The Art of Problem Solving (AoPS) in Mathematics \u2014 13 volumes: https://t.co/M5c136XMrc \u2014 \ud83c\udf1fBRILLIANT\ud83c\udf1f\n\nPrealgebra\nAlgebra\nIntermediate Algebra\nGeometry\nPrecalculus\nCalculus\nNumber Theory\nProbability\nSolutions Manuals has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2103842889935823358",
+          "text_snippet": "The Art of Problem Solving (AoPS) in Mathematics \u2014 13 volumes: https://t.co/M5c136XMrc \u2014 \ud83c\udf1fBRILLIANT\ud83c\udf1f\n\nPrealgebra\nAlgebra\nIntermediate Algebra\nGeometry\nPrecalculus\nCalculus\nNumber Theory\nProbability\nSolutions Manuals",
+          "url": "https://x.com/user/status/2103842889935823358"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-3327b7756d81",
+      "name": "Art Of Problem Solving",
+      "url": "https://amzn.to",
+      "domain": "amzn.to",
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @The Art of Problem Solving (AoPS) in Mathematics \u2014 13 volumes: https://t.co/Co5WBgtIWf \u2014 \ud83c\udf1fBRILLIANT\ud83c\udf1f\n\nPrealgebra\nAlgebra\nIntermediate Algebra\nGeometry\nPrecalculus\nCalculus\nNumber Theory\nProbability\nSolutions Manuals\nand more! https://t.co/KxWO7MQoWf has +47 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2103700354567442481",
+          "text_snippet": "The Art of Problem Solving (AoPS) in Mathematics \u2014 13 volumes: https://t.co/Co5WBgtIWf \u2014 \ud83c\udf1fBRILLIANT\ud83c\udf1f\n\nPrealgebra\nAlgebra\nIntermediate Algebra\nGeometry\nPrecalculus\nCalculus\nNumber Theory\nProbability\nSolutions Manuals\nand more! https://t.co/KxWO7MQoWf",
+          "url": "https://x.com/user/status/2103700354567442481"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-2b69baa6108b",
+      "name": "Beast Academy",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @@LusciousPotate @Abomination81 @TheAutomotivepb Same, and it is going beautifully. We aren't having the AI actually build the main curriculum components, as we have third-party tools we love, like Beast Academy, Math Academy, Logic of English, and Science is Weird. \n\nHaving a curriculum-agnostic dashboard that can help us keep has +1 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2103521686708490675",
+          "text_snippet": "@LusciousPotate @Abomination81 @TheAutomotivepb Same, and it is going beautifully. We aren't having the AI actually build the main curriculum components, as we have third-party tools we love, like Beast Academy, Math Academy, Logic of English, and Science is Weird. \n\nHaving a cur",
+          "url": "https://x.com/user/status/2103521686708490675"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-e1e70f71239d",
+      "name": "Beast Academy",
+      "url": "https://youtube.com",
+      "domain": "youtube.com",
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @\u306f\u3058\u3081\u307e\u3059\uff01\n\u3010 #\u96c0\u9b42 \u30112026/9/25 ACQUIRE\u9053\u5834\u7834\u308a\u4f01\u753b\uff01VS Rising Beast Academy \u8ca0\u3051\u305f\u3089\u30b7\u30c1\u30e5\u30dc\u3089\u3057\u3044\u3088\u3010\u30c1\u30fc\u30e0A... https://t.co/xJPCil9SgX @YouTube\u3088\u308a has +3 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2103463103602311328",
+          "text_snippet": "\u306f\u3058\u3081\u307e\u3059\uff01\n\u3010 #\u96c0\u9b42 \u30112026/9/25 ACQUIRE\u9053\u5834\u7834\u308a\u4f01\u753b\uff01VS Rising Beast Academy \u8ca0\u3051\u305f\u3089\u30b7\u30c1\u30e5\u30dc\u3089\u3057\u3044\u3088\u3010\u30c1\u30fc\u30e0A... https://t.co/xJPCil9SgX @YouTube\u3088\u308a",
+          "url": "https://x.com/user/status/2103463103602311328"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1078851d170a",
+      "name": "Art Of Problem Solving",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @@NielsHoven Started teaching my kid times tables when she was in pre-school. The teachers at her private school frowned on this. \n\nShe's now doing Art of Problem Solving algebra while the 4th graders at her old school (we now homeschool) are learning how to calculate 324x6 (which she would has +5 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2103263400105054441",
+          "text_snippet": "@NielsHoven Started teaching my kid times tables when she was in pre-school. The teachers at her private school frowned on this. \n\nShe's now doing Art of Problem Solving algebra while the 4th graders at her old school (we now homeschool) are learning how to calculate 324x6 (which",
+          "url": "https://x.com/user/status/2103263400105054441"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-e4936c78f459",
+      "name": "Desmos",
+      "url": "https://desmos.com",
+      "domain": "desmos.com",
+      "categories": [
+        "math"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @\uc9c1\uc811 \ud574\ubcf4\ub294 \uc218\ud559 \uc0ac\uc774\ud2b8 10\uacf3\n\n\uc218\ud559\uc740 \uc124\uba85\ub9cc \uc77d\uc73c\uba74 \uc798 \uae30\uc5b5\ub098\uc9c0 \uc54a\ub294\ub2e4.\n\uc9c1\uc811 \ud574\ubcfc \uc218 \uc788\ub294 \uc0ac\uc774\ud2b8\ub9cc \uace8\ub790\ub2e4.\n\n1. Desmos Calculator \u2014 \uc2dd\ub9cc \ub123\uc5b4\ub3c4 \uadf8\ub798\ud504\uac00 \ubc14\ub85c \uc6c0\uc9c1\uc778\ub2e4\nhttps://t.co/ywU2dhxRAl\n\n2. Desmos Geometry \u2014 \uc791\ub3c4\uc640 \ubcc0\ud658\uc744 \uc88c\ud45c \ud3c9\uba74 \uc704\uc5d0\uc11c \uc5f0\uc2b5\ud55c\ub2e4\nhttps://t.co/6mqg6tTqwX\n\n3. https://t.co/K6fOKQAM35 has +11 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2103252313024643179",
+          "text_snippet": "\uc9c1\uc811 \ud574\ubcf4\ub294 \uc218\ud559 \uc0ac\uc774\ud2b8 10\uacf3\n\n\uc218\ud559\uc740 \uc124\uba85\ub9cc \uc77d\uc73c\uba74 \uc798 \uae30\uc5b5\ub098\uc9c0 \uc54a\ub294\ub2e4.\n\uc9c1\uc811 \ud574\ubcfc \uc218 \uc788\ub294 \uc0ac\uc774\ud2b8\ub9cc \uace8\ub790\ub2e4.\n\n1. Desmos Calculator \u2014 \uc2dd\ub9cc \ub123\uc5b4\ub3c4 \uadf8\ub798\ud504\uac00 \ubc14\ub85c \uc6c0\uc9c1\uc778\ub2e4\nhttps://t.co/ywU2dhxRAl\n\n2. Desmos Geometry \u2014 \uc791\ub3c4\uc640 \ubcc0\ud658\uc744 \uc88c\ud45c \ud3c9\uba74 \uc704\uc5d0\uc11c \uc5f0\uc2b5\ud55c\ub2e4\nhttps://t.co/6mqg6tTqwX\n\n3. https://t.co/K6fOKQAM35",
+          "url": "https://x.com/user/status/2103252313024643179"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-07ad8af69275",
+      "name": "Khan Academy",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "math"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @@GlomarResponder My kids to inexpensive online math (Beast Academy and Khan Academy) for 15mins a day and they're both 3-4 grade levels ahead of government school, and they aren't even teens yet. has +4 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102906719500394864",
+          "text_snippet": "@GlomarResponder My kids to inexpensive online math (Beast Academy and Khan Academy) for 15mins a day and they're both 3-4 grade levels ahead of government school, and they aren't even teens yet.",
+          "url": "https://x.com/user/status/2102906719500394864"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-d88d4ee31b13",
+      "name": "Beast Academy",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @@moultano &gt; tweet on public vs private schooling\n&gt; mentions something called 'Beast Academy'\n&gt; @tracewoodgrains not tagged\n\ni hope it's like pic related https://t.co/sAll5uxAtz has +1 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102780227755848174",
+          "text_snippet": "@moultano &gt; tweet on public vs private schooling\n&gt; mentions something called 'Beast Academy'\n&gt; @tracewoodgrains not tagged\n\ni hope it's like pic related https://t.co/sAll5uxAtz",
+          "url": "https://x.com/user/status/2102780227755848174"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-2b69baa6108b",
+      "name": "Beast Academy",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @@0Beanie05923291 I love Beast Academy. I have seen the deepest understanding by far come out of their time spent with that curriculum. Heck I've been getting better too. \ud83d\ude02 has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102620557929848916",
+          "text_snippet": "@0Beanie05923291 I love Beast Academy. I have seen the deepest understanding by far come out of their time spent with that curriculum. Heck I've been getting better too. \ud83d\ude02",
+          "url": "https://x.com/user/status/2102620557929848916"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-2b69baa6108b",
+      "name": "Beast Academy",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @@moultano When did you start your kid on beast academy? has +2 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102545521856467200",
+          "text_snippet": "@moultano When did you start your kid on beast academy?",
+          "url": "https://x.com/user/status/2102545521856467200"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-9a886b81be9a",
+      "name": "Beast Academy",
+      "url": "https://twitter.com",
+      "domain": "twitter.com",
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @One thing I really like about Beast Academy is how it elevates stuff you do with integers. In normal gradeschool math, you get the feeling that integers are \"baby numbers\" and the progression of math eventually all becomes the reals, which is not at all how higher math is. https://t.co/sxBXC5ZMdH has +72 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102444953125429538",
+          "text_snippet": "One thing I really like about Beast Academy is how it elevates stuff you do with integers. In normal gradeschool math, you get the feeling that integers are \"baby numbers\" and the progression of math eventually all becomes the reals, which is not at all how higher math is. https:",
+          "url": "https://x.com/user/status/2102444953125429538"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-2b69baa6108b",
+      "name": "Beast Academy",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @@moultano Interesting. Our DCPS elementary school\u2014not sure about others\u2014offers Beast Academy as a math \u201cenrichment\u201d in grades 2-5, without explicit tracking. has +3 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102433503690584352",
+          "text_snippet": "@moultano Interesting. Our DCPS elementary school\u2014not sure about others\u2014offers Beast Academy as a math \u201cenrichment\u201d in grades 2-5, without explicit tracking.",
+          "url": "https://x.com/user/status/2102433503690584352"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-2b69baa6108b",
+      "name": "Beast Academy",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @There are kids in my kids' school who would benefit from Beast Academy but can't afford it. Tracking would give those kids access to it, and save affluent kids a lot of wasted time. has +41 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102388057035153737",
+          "text_snippet": "There are kids in my kids' school who would benefit from Beast Academy but can't afford it. Tracking would give those kids access to it, and save affluent kids a lot of wasted time.",
+          "url": "https://x.com/user/status/2102388057035153737"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-9a886b81be9a",
+      "name": "Beast Academy",
+      "url": "https://twitter.com",
+      "domain": "twitter.com",
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @This is very similar to how we approached public school, outside math through Beast Academy so they don't get bored and so they like math, and pushing them to read more and harder books than the school does. https://t.co/tNEioBWJMy has +86 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102376971187765463",
+          "text_snippet": "This is very similar to how we approached public school, outside math through Beast Academy so they don't get bored and so they like math, and pushing them to read more and harder books than the school does. https://t.co/tNEioBWJMy",
+          "url": "https://x.com/user/status/2102376971187765463"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-d3039065abfa",
+      "name": "Art Of Problem Solving",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @I homeschool my 9yo daughter. Just got next batch of Art of Problem Solving books. Should keep us busy for a few years. https://t.co/2C99OZAa3R has +13 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102112683898155278",
+          "text_snippet": "I homeschool my 9yo daughter. Just got next batch of Art of Problem Solving books. Should keep us busy for a few years. https://t.co/2C99OZAa3R",
+          "url": "https://x.com/user/status/2102112683898155278"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-2b69baa6108b",
+      "name": "Beast Academy",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "gifted"
+      ],
+      "confidence_note": "Discovered via X query \"math_competition\" on 2026-09-28T03:35:36.088301+00:00. @@Redacted925 Yep so many paid resources I have my 5 year old doing Beast Academy because school math is too low level for him. has +1 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2102071098850386143",
+          "text_snippet": "@Redacted925 Yep so many paid resources I have my 5 year old doing Beast Academy because school math is too low level for him.",
+          "url": "https://x.com/user/status/2102071098850386143"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "math_competition"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-c93705022c2b",
+      "name": "Anki",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "general_edtech"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104339845279527021",
+          "text_snippet": "@baltosaxon Perfect case study is the decline in states in literacy in states such as Massachusetts, New Jersey or even Connecticut, despite being world renowned for their education system.\n\nContrasted by Mississippi, which has shot up the rankings after returning to a phonics ba",
+          "url": "https://x.com/user/status/2104339845279527021"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "phonics_reading"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-fb6db66796e4",
+      "name": "Peac",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "general_edtech"
+      ],
+      "confidence_note": "Discovered via X query \"reading_intervention\" on 2026-09-28T03:35:36.088301+00:00. @\ud83d\udcf8Grape and peach fruit juiceAfter dinner, I head back to the motel, feeling tired but happy. I climb into bed, reading a few pages of the book I bought, before closing my eyes. I\u2019m excited for the guided hike tomorrow, and I can\u2019t wait to learn more about the mountains. https://t.co/dntDhFsqbd has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104399632499716254",
+          "text_snippet": "\ud83d\udcf8Grape and peach fruit juiceAfter dinner, I head back to the motel, feeling tired but happy. I climb into bed, reading a few pages of the book I bought, before closing my eyes. I\u2019m excited for the guided hike tomorrow, and I can\u2019t wait to learn more about the mountains. https://t",
+          "url": "https://x.com/user/status/2104399632499716254"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "reading_intervention"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1d6acc815353",
+      "name": "Scratch",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104411328115016007",
+          "text_snippet": "@MiMiIsKing @Wakes_Kay1 Kids scratch cars in the parking lot",
+          "url": "https://x.com/user/status/2104411328115016007"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1d6acc815353",
+      "name": "Scratch",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104401656901451970",
+          "text_snippet": "@axhiii88547 Scratch.  Look at all the kids they're just coding up human dimensional stuff and maybe Loops at the best",
+          "url": "https://x.com/user/status/2104401656901451970"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1d6acc815353",
+      "name": "Scratch",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104392288898040234",
+          "text_snippet": "Tokyo Story: Instead of sending the parents to a raucous day spa, the children should have sent them to a convenience store with scratch off lottery. Less dangerous + if they get rich everybody can be a family again.",
+          "url": "https://x.com/user/status/2104392288898040234"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-db79761355ff",
+      "name": "Scratch",
+      "url": "https://twitter.com",
+      "domain": "twitter.com",
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104389179325263961",
+          "text_snippet": "Nobody forcing women to -  \n\nmarry, \nhave kids,  \nor even continue living in society..they can go in wild and build everything from scratch.  \n\nwhat seem to be complain ?  \n\nJust dont participate if there is a problem.  \n\nLet those who want to participate, continue doing so. http",
+          "url": "https://x.com/user/status/2104389179325263961"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1d6acc815353",
+      "name": "Scratch",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104384619068162538",
+          "text_snippet": "i seen preschool having to do math i gave them the addition chart preschool and kindegarden and the basic math calculator * they sent it home so they used it at home * soon you will notice the children will know how to do the problem without the scratch paper for math",
+          "url": "https://x.com/user/status/2104384619068162538"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-66490ca83d15",
+      "name": "Scratch",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104375835692036137",
+          "text_snippet": "The Republic  - by Plato\n\nSocrates gets challenged to prove that being a good person is actually worth it, and to answer, he designs an entire perfect city from scratch. https://t.co/zUbdpIv8SW",
+          "url": "https://x.com/user/status/2104375835692036137"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1d6acc815353",
+      "name": "Scratch",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104375670079996000",
+          "text_snippet": "@jenjoni1029 @Manikipi @SundayTimesZA Relatives  go scratch peoples names from houses adding their kids its bad there",
+          "url": "https://x.com/user/status/2104375670079996000"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-66490ca83d15",
+      "name": "Scratch",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104372506216034595",
+          "text_snippet": "@Aadil_Rajput_ @_amitbehere What will they do if they return ?\nSame salary &amp; benefits ?\ntraffic\npollution\n\nThey will hardly survive 1 year &amp; run away !\nThey already have children who are accustomed to other countries environment \nThey can't start their life from scratch a",
+          "url": "https://x.com/user/status/2104372506216034595"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1d6acc815353",
+      "name": "Scratch",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104365997293556078",
+          "text_snippet": "@buffnik It's a side effect of the \"win now\" mentality. They treat it like it's the NFL where you can just sign on skilled kids in the portal. And then invest little to no effort in coaching the fundamentals. All the coaches, schemes, and players are all new and starting for scra",
+          "url": "https://x.com/user/status/2104365997293556078"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1d6acc815353",
+      "name": "Scratch",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "coding"
+      ],
+      "confidence_note": "Already in catalog \u2014 name_overlap match.",
+      "source_posts": [
+        {
+          "tweet_id": "2104363437669167254",
+          "text_snippet": "I like playing Loteria scratch offs\nIt\u2019s not even about the money id do it if it was a kids activity packet loool",
+          "url": "https://x.com/user/status/2104363437669167254"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "coding_kids"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": true
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@willydgtg901 I\u2019m not so sure. This year the AAC looks likes it\u2019s trash. Navy, USF and Tulane doesn\u2019t look so scary as they looked preseason. has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104414507829477378",
+          "text_snippet": "@willydgtg901 I\u2019m not so sure. This year the AAC looks likes it\u2019s trash. Navy, USF and Tulane doesn\u2019t look so scary as they looked preseason.",
+          "url": "https://x.com/user/status/2104414507829477378"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-8943081eb010",
+      "name": "Aac",
+      "url": "https://nekomimi-tokka.hatenablog.com",
+      "domain": "nekomimi-tokka.hatenablog.com",
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @Earaku\uff08\u30a4\u30a2\u30e9\u30af\uff09 \u30ef\u30a4\u30e4\u30ec\u30b9\u30d8\u30c3\u30c9\u30db\u30f3 \u8d85\u8efd\u91cf114g\u30aa\u30fc\u30d0\u30fc\u30a4\u30e4\u30fc\u578b Soundboost J131 \u30d7\u30ed\u7d1a\u91cd\u4f4e\u97f3\u30fb\u7a7a\u9593\u30aa\u30fc\u30c7\u30a3\u30aa DSP\u642d\u8f09\u5e95\u566a\u30bc\u30ed Bluetooth5.4\u30ce\u30a4\u30ba\u30ad\u30e3\u30f3\u30bb\u30ea\u30f3\u30b0 2\u53f0\u540c\u6642\u63a5\u7d9a\u53ef \u30de\u30a4\u30af\u5185\u8535 SBC/AAC\u5bfe\u5fdc Type-C\u5145\u96fb \u30b9\u30de\u2026\n\u00a54,422\uff081,769pt\uff09 12:20\n\u200b#PR #Amazon\nhttps://t.co/BMyRRRoXaN has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104411070710632822",
+          "text_snippet": "Earaku\uff08\u30a4\u30a2\u30e9\u30af\uff09 \u30ef\u30a4\u30e4\u30ec\u30b9\u30d8\u30c3\u30c9\u30db\u30f3 \u8d85\u8efd\u91cf114g\u30aa\u30fc\u30d0\u30fc\u30a4\u30e4\u30fc\u578b Soundboost J131 \u30d7\u30ed\u7d1a\u91cd\u4f4e\u97f3\u30fb\u7a7a\u9593\u30aa\u30fc\u30c7\u30a3\u30aa DSP\u642d\u8f09\u5e95\u566a\u30bc\u30ed Bluetooth5.4\u30ce\u30a4\u30ba\u30ad\u30e3\u30f3\u30bb\u30ea\u30f3\u30b0 2\u53f0\u540c\u6642\u63a5\u7d9a\u53ef \u30de\u30a4\u30af\u5185\u8535 SBC/AAC\u5bfe\u5fdc Type-C\u5145\u96fb \u30b9\u30de\u2026\n\u00a54,422\uff081,769pt\uff09 12:20\n\u200b#PR #Amazon\nhttps://t.co/BMyRRRoXaN",
+          "url": "https://x.com/user/status/2104411070710632822"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @4 Pro\u306fSSC\u3067\u306f\u306a\u304fAAC\u3067\u63a5\u7d9a\u3057\u3066\u78ba\u8a8d\u3057\u3066\u3044\u308b has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104410841831669815",
+          "text_snippet": "4 Pro\u306fSSC\u3067\u306f\u306a\u304fAAC\u3067\u63a5\u7d9a\u3057\u3066\u78ba\u8a8d\u3057\u3066\u3044\u308b",
+          "url": "https://x.com/user/status/2104410841831669815"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-827789274935",
+      "name": "Aac",
+      "url": "https://twitter.com",
+      "domain": "twitter.com",
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @As an EA, I see how important communication access is for students. AAC tools can give students another way to express their needs, ideas, and choices while participating more actively in the classroom. #EDUC25738 #AAC https://t.co/bVBevpJO9a has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104409402946027540",
+          "text_snippet": "As an EA, I see how important communication access is for students. AAC tools can give students another way to express their needs, ideas, and choices while participating more actively in the classroom. #EDUC25738 #AAC https://t.co/bVBevpJO9a",
+          "url": "https://x.com/user/status/2104409402946027540"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-827789274935",
+      "name": "Aac",
+      "url": "https://twitter.com",
+      "domain": "twitter.com",
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @Nous demandons au Ministre de la justice  d' ordonner de poursuites judiciaires contre tous les r\u00e9seaux spoliateurs de biens de l' \u00c9tat r\u00e9sidant \u00e0 Kinshasa et partout \u00e0 hier ; il est temps que les coupables av\u00e9r\u00e9s puissent \u00eatre appr\u00e9hend\u00e9s puis jug\u00e9s m\u00eame ceux de la RVA, AAC . https://t.co/zFXJENE1x9 has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104408953245290628",
+          "text_snippet": "Nous demandons au Ministre de la justice  d' ordonner de poursuites judiciaires contre tous les r\u00e9seaux spoliateurs de biens de l' \u00c9tat r\u00e9sidant \u00e0 Kinshasa et partout \u00e0 hier ; il est temps que les coupables av\u00e9r\u00e9s puissent \u00eatre appr\u00e9hend\u00e9s puis jug\u00e9s m\u00eame ceux de la RVA, AAC . ht",
+          "url": "https://x.com/user/status/2104408953245290628"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@sowore We all knew AAC was created by APC Buhari Tinubu.\n\nFor u to join Islamic jihadists protest against usel\u00e9ss Israel, instead of protesting for the kilings of innocent Christians from the cowtry u want to rule, spoke louder to our ears\n\nYou work for APC &amp;we must disengage ourselves has +1 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104407612976435697",
+          "text_snippet": "@sowore We all knew AAC was created by APC Buhari Tinubu.\n\nFor u to join Islamic jihadists protest against usel\u00e9ss Israel, instead of protesting for the kilings of innocent Christians from the cowtry u want to rule, spoke louder to our ears\n\nYou work for APC &amp;we must disengag",
+          "url": "https://x.com/user/status/2104407612976435697"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1e96cf56607c",
+      "name": "Aac",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @AAC Power Ratings: https://t.co/m71XJrdyfW has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104405139075584437",
+          "text_snippet": "AAC Power Ratings: https://t.co/m71XJrdyfW",
+          "url": "https://x.com/user/status/2104405139075584437"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@jones_kimb82500 Yes, 8, where 7 of the current could be 2026 AAC champs. has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104404044185993427",
+          "text_snippet": "@jones_kimb82500 Yes, 8, where 7 of the current could be 2026 AAC champs.",
+          "url": "https://x.com/user/status/2104404044185993427"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@Rowdy__Rock @BD_monster @JoeInOregon_87 @MeepMeepMedia The AAC is ass. Why do you think JMU, UConn, and the rest asked to join YOUR conf? Cause they couldn't even beat our Pac-12 doormats. has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104403604811686129",
+          "text_snippet": "@Rowdy__Rock @BD_monster @JoeInOregon_87 @MeepMeepMedia The AAC is ass. Why do you think JMU, UConn, and the rest asked to join YOUR conf? Cause they couldn't even beat our Pac-12 doormats.",
+          "url": "https://x.com/user/status/2104403604811686129"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@jones_kimb82500 The AAC label is G5 caliber and TXST dogwalking UNT proved our doormats can beat y'all \"top\" teams. Heck even WSU and USU would dog walk your ass. has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104403079840079878",
+          "text_snippet": "@jones_kimb82500 The AAC label is G5 caliber and TXST dogwalking UNT proved our doormats can beat y'all \"top\" teams. Heck even WSU and USU would dog walk your ass.",
+          "url": "https://x.com/user/status/2104403079840079878"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@BD_monster Where in today's rankings is UTSA? I didn't see them get a single vote. So your \"powerhouse\" of a team is irrelevant on the eyes of the national press meaning they give 0 fucks about the G5 AAC. has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104402701660680683",
+          "text_snippet": "@BD_monster Where in today's rankings is UTSA? I didn't see them get a single vote. So your \"powerhouse\" of a team is irrelevant on the eyes of the national press meaning they give 0 fucks about the G5 AAC.",
+          "url": "https://x.com/user/status/2104402701660680683"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @Memphis blew the CFP this year by playing Boise on the road\n\nIf they played Tennessee Tech instead of that game they would be front runners to make CFP right now\n\nNow it\u2019s basically impossible\n\nAAC teams do not need to play any other G5 league out of conference has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104401262771073521",
+          "text_snippet": "Memphis blew the CFP this year by playing Boise on the road\n\nIf they played Tennessee Tech instead of that game they would be front runners to make CFP right now\n\nNow it\u2019s basically impossible\n\nAAC teams do not need to play any other G5 league out of conference",
+          "url": "https://x.com/user/status/2104401262771073521"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @No P4 team is going to play Memphis ever again as long as they are in AAC so if you\u2019re complaining about what you\u2019re just wasting your time \n\nIt sucks but there\u2019s mothing Ed or anybody can do about it \n\nGames changed has +3 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104399431894528443",
+          "text_snippet": "No P4 team is going to play Memphis ever again as long as they are in AAC so if you\u2019re complaining about what you\u2019re just wasting your time \n\nIt sucks but there\u2019s mothing Ed or anybody can do about it \n\nGames changed",
+          "url": "https://x.com/user/status/2104399431894528443"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-827789274935",
+      "name": "Aac",
+      "url": "https://twitter.com",
+      "domain": "twitter.com",
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @Amazing schedule\n\nNot for selling tickets, but for making the CFP this is the path forward\n\nDo NOT ever play Boise State again or any other top G5 team unless it\u2019s somehow on a neutral field.. AAC will make the CFP over the PAC and every other G5 league\n\nWin AAC and you\u2019re in https://t.co/7cIKOKDKK8 has +7 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104399141040447783",
+          "text_snippet": "Amazing schedule\n\nNot for selling tickets, but for making the CFP this is the path forward\n\nDo NOT ever play Boise State again or any other top G5 team unless it\u2019s somehow on a neutral field.. AAC will make the CFP over the PAC and every other G5 league\n\nWin AAC and you\u2019re in htt",
+          "url": "https://x.com/user/status/2104399141040447783"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@ImmaculateView With the AAC announcing publicly they turned down 3 schools any chance some the schools from the AAC and PAC opt into the House Settlement and form a 5th \u201cA\u201d conference for the governance / breakaway? Solves the Wazzu-OSU issue and also helps with Anti Trust. has +1 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104391241085690283",
+          "text_snippet": "@ImmaculateView With the AAC announcing publicly they turned down 3 schools any chance some the schools from the AAC and PAC opt into the House Settlement and form a 5th \u201cA\u201d conference for the governance / breakaway? Solves the Wazzu-OSU issue and also helps with Anti Trust.",
+          "url": "https://x.com/user/status/2104391241085690283"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@mora_help TOWA TEI\u306e\u300eZAMBIENT\u300f\u304cAAC\u914d\u4fe1\u306e\u307f\u3067\u30ed\u30b9\u30ec\u30b9\u304c\u3042\u308a\u307e\u305b\u3093\u3002OTOTOY\u306b\u306f\u3042\u308b\u306e\u3067\u3001\u8ffd\u52a0\u3057\u3066\u304f\u3060\u3055\u3044\uff01\u3067\u304d\u308c\u3070\u30cf\u30a4\u30ec\u30be\u914d\u4fe1\u3082\u304a\u9858\u3044\u3057\u307e\u3059\uff01 has +1 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104391088144629854",
+          "text_snippet": "@mora_help TOWA TEI\u306e\u300eZAMBIENT\u300f\u304cAAC\u914d\u4fe1\u306e\u307f\u3067\u30ed\u30b9\u30ec\u30b9\u304c\u3042\u308a\u307e\u305b\u3093\u3002OTOTOY\u306b\u306f\u3042\u308b\u306e\u3067\u3001\u8ffd\u52a0\u3057\u3066\u304f\u3060\u3055\u3044\uff01\u3067\u304d\u308c\u3070\u30cf\u30a4\u30ec\u30be\u914d\u4fe1\u3082\u304a\u9858\u3044\u3057\u307e\u3059\uff01",
+          "url": "https://x.com/user/status/2104391088144629854"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-a76c229d626f",
+      "name": "Aac",
+      "url": "See source tweet below",
+      "domain": null,
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@ReddyRedWolf Got the nickname \"fox\" from my paintball days because I could sneak about the woods silently.\nWell, it just sort of stuck. Found furry not long after, and made a fox fursuit that I took to AAC'97. has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104389810416689589",
+          "text_snippet": "@ReddyRedWolf Got the nickname \"fox\" from my paintball days because I could sneak about the woods silently.\nWell, it just sort of stuck. Found furry not long after, and made a fox fursuit that I took to AAC'97.",
+          "url": "https://x.com/user/status/2104389810416689589"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    },
+    {
+      "candidate_id": "x-x-discovery-run-01-1e96cf56607c",
+      "name": "Aac",
+      "url": "https://x.com",
+      "domain": "x.com",
+      "categories": [
+        "assistive"
+      ],
+      "confidence_note": "Discovered via X query \"assistive_tech\" on 2026-09-28T03:35:36.088301+00:00. @@AAC_FB @CHARGEONCB You would be an FCS conference if it wasn\u2019t for UCF. They are the only reason the AAC brand was somewhat relevant https://t.co/WtAkTTt2hX has +0 likes. JEV says: NOT A edu product. No editorial review performed.",
+      "source_posts": [
+        {
+          "tweet_id": "2104388933442265137",
+          "text_snippet": "@AAC_FB @CHARGEONCB You would be an FCS conference if it wasn\u2019t for UCF. They are the only reason the AAC brand was somewhat relevant https://t.co/WtAkTTt2hX",
+          "url": "https://x.com/user/status/2104388933442265137"
+        }
+      ],
+      "discovered_at": "2026-09-28T03:35:36.088301+00:00",
+      "editorial_status": "not_reviewed",
+      "discovery_provenance": {
+        "method": "x_discovery",
+        "run_batch_id": "x-discovery-run-01",
+        "feed_query_families": [
+          "assistive_tech"
+        ]
+      },
+      "jev_classification": {
+        "is_edu_product": null,
+        "reason": "Jev error: HTTPSConnectionPool(host='decision.jev.ai', port=443): Max retries exceeded with url: /v1/chat/completions (Caused by NameResolutionError(\"HTTPSConnection(host='decision.jev.ai', port=443): Failed to resolve 'decision.jev.ai' ([Errno 8] nodename nor servname provided, or not known)\"))",
+        "category": "general_edtech"
+      },
+      "is_duplicate": false
+    }
+  ]
+}
