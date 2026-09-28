@@ -3,11 +3,13 @@
     "pipeline_run": "x-discovery-run-01",
     "generated_at": "2026-09-28T03:35:36.089128+00:00",
     "issue": "LOL-112",
-    "note": "Reviewable artifact only \u2014 NOT published to catalog"
+    "note": "Reviewable artifact only \u2014 NOT published to catalog. Run 01 with Aac/PECS noise filter applied.",
+    "noise_filter_applied": true,
+    "noise_filtered_count": 18
   },
   "summary": {
-    "total_candidates": 55,
-    "non_duplicates": 42
+    "total_candidates": 37,
+    "non_duplicates": 24
   },
   "candidates": [
     {

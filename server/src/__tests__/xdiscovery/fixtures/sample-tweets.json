@@ -1,0 +1,58 @@
+[
+  {
+    "id": "1840000000000000001",
+    "text": "Just discovered this amazing new app called Lumosity for brain training! Perfect for kids who need extra practice. Check it out at https://www.lumosity.com 🧠 #edtech #learning",
+    "created_at": "2026-09-25T14:30:00.000Z",
+    "author_id": "1234567890123456789",
+    "public_metrics": { "retweet_count": 12, "reply_count": 3, "like_count": 45, "quote_count": 1 },
+    "entities": {
+      "hashtags": [{ "tag": "edtech" }, { "tag": "learning" }],
+      "urls": []
+    }
+  },
+  {
+    "id": "1840000000000000002",
+    "text": "Our homeschool community is loving the new curriculum from Sonlight. Great for K-8 reading and history programs!\n\nVisit: http://sonlight.com/curriculum",
+    "created_at": "2026-09-25T15:00:00.000Z",
+    "author_id": "2345678901234567890",
+    "public_metrics": { "retweet_count": 8, "reply_count": 5, "like_count": 23, "quote_count": 0 }
+  },
+  {
+    "id": "1840000000000000003",
+    "text": "The Khan Academy math track for middle school has improved SO much. My daughter finally gets fractions now! https://www.khanacademy.org/math #math #middle_school",
+    "created_at": "2026-09-25T16:15:00.000Z",
+    "author_id": "3456789012345678901",
+    "public_metrics": { "retweet_count": 34, "reply_count": 12, "like_count": 156, "quote_count": 4 },
+    "entities": {
+      "hashtags": [{ "tag": "math" }, { "tag": "middle_school" }]
+    }
+  },
+  {
+    "id": "1840000000000000004",
+    "text": "If you're looking for coding activities for your elementary students, try Code.org's Computer Science fundamentals course. Free and no login required!",
+    "created_at": "2026-09-25T17:45:00.000Z",
+    "author_id": "4567890123456789012",
+    "public_metrics": { "retweet_count": 56, "reply_count": 8, "like_count": 234, "quote_count": 7 }
+  },
+  {
+    "id": "1840000000000000005",
+    "text": "Found this gem: Beast Academy by Art of Problem Solving is great for gifted kids in grades 2-8. The online practice is excellent.",
+    "created_at": "2026-09-25T18:00:00.000Z",
+    "author_id": "5678901234567890123",
+    "public_metrics": { "retweet_count": 21, "reply_count": 7, "like_count": 89, "quote_count": 2 }
+  },
+  {
+    "id": "1840000000000000006",
+    "text": "Outschool has an incredible variety of classes for curious kids — from creative writing to robotics to marine biology. So many options that fit every learning style! https://outschool.com/classes",
+    "created_at": "2026-09-25T19:30:00.000Z",
+    "author_id": "6789012345678901234",
+    "public_metrics": { "retweet_count": 15, "reply_count": 4, "like_count": 67, "quote_count": 1 }
+  },
+  {
+    "id": "1840000000000000007",
+    "text": "Teachers Pay Teachers is gold. Every resource I need for my 3rd grade classroom is there. Highly recommend finding a teacher whose style matches yours.",
+    "created_at": "2026-09-25T20:00:00.000Z",
+    "author_id": "7890123456789012345",
+    "public_metrics": { "retweet_count": 9, "reply_count": 11, "like_count": 78, "quote_count": 0 }
+  }
+]

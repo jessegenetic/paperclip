@@ -25,7 +25,7 @@ export { QUERY_FAMILIES, TOTAL_QUERY_COUNT } from "./queries.js";
 // Pipeline modules
 export { runPipeline, main as mainCLI } from "./pipeline.js";
 export { deduplicate, loadCatalog, dedupSummary } from "./deduper.js";
-export { extractCandidates } from "./extractor.js";
+export { extractCandidates, isNoiseTerm } from "./extractor.js";
 export { emitCandidates } from "./emitter.js";
 export { writeBatchIssue } from "./batch-writer.js";
 export { XApiClient } from "./client.js";

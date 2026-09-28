@@ -120,7 +120,8 @@ export function extractCandidates(tweets: Tweet[]): CandidateEntity[] {
     return bKnown - aKnown;
   });
 
-  return results;
+  // Filter out noise terms (acronyms, modalities that are not products)
+  return results.filter(e => !isNoiseTerm(e.name));
 }
 
 /** Extract all potential URLs from a tweet's text content. */
@@ -254,6 +255,24 @@ function cleanEntityName(raw: string): string {
     .replace(/['"`]/g, "")          // strip quote chars
     .trim()
     .replace(/^the\s+/i, "");       // strip leading "The "
+}
+
+// ── Noise / stop-word filter for extraction ──────────────────────────────
+
+/** Terms that are acronyms, communication modalities, or generic concepts
+ * but NOT educational products themselves. These should never be surfaced as
+ * candidates — they are false positives from regex matching. */
+const NOISE_TERMS = new Set([
+  "Aac", "AAC", "aac",      // Augmentative and Alternative Communication (modality, not product)
+  "Pecs", "PECS", "pecs",    // Picture Exchange Communication System (same category)
+  "Sst", "SST", "sst",       // Social Stories / Situation Script Training
+  "Stem", "STEM", "stem",    // Science Technology Engineering Mathematics (domain, not product)
+  "Steam", "STEAM", "steam",  // same
+]);
+
+/** Return true if the name looks like noise/false-positive and should be filtered out. */
+export function isNoiseTerm(name: string): boolean {
+  return NOISE_TERMS.has(name);
 }
 
 /** Build a dedup-friendly key from a URL. */
