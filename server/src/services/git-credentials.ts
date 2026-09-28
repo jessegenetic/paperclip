@@ -10,6 +10,7 @@ import {
   type Db,
 } from "@paperclipai/db";
 import { and, eq, inArray, or } from "drizzle-orm";
+import { HttpError } from "../errors.js";
 import { isGitHubDotCom } from "./github-fetch.js";
 import { secretService } from "./secrets.js";
 import { toolAccessService } from "./tool-access.js";
@@ -395,11 +396,15 @@ export async function resolveManagedGitHubIdentitySelection(
     if (candidates.length === 1) return true;
     const github = grant.providerTenant?.github;
     const ref = grant.credentialSecretRefs.find((ref) => ref.configPath === "oauth.access_token");
+    // Availability follows the credential's own scope, matching how the token is
+    // resolved below. A user-scoped secret is readable through a dedicated agent
+    // grant as well as through its owner's own grant; only a `user` grant is
+    // additionally pinned to its subject.
     return Boolean(github && github.installationCount > 0 && github.repositoryCount > 0 && ref
       && credentialRecords.some((secret) => secret.id === ref.secretId
         && secret.status === "active" && !secret.deletedAt
-        && (grant.kind === "user"
-          ? secret.scope === "user" && secret.ownerUserId === grant.subjectUserId
+        && (secret.scope === "user"
+          ? Boolean(secret.ownerUserId) && (grant.kind !== "user" || secret.ownerUserId === grant.subjectUserId)
             && secret.definitionStatus === "active" && !secret.definitionDeletedAt
           : secret.scope === "company")));
   };
@@ -461,6 +466,27 @@ export async function filterResolvedGitHubConnectionsForRun<T extends {
   );
 }
 
+/**
+ * Describe a thrown credential acquisition. Secret resolution throws for two very
+ * different reasons: a deterministic misconfiguration (a scope mismatch, a deleted
+ * or undeclared secret) and a genuinely transient provider failure. Reporting both
+ * as "temporarily unavailable" sends an operator to retry a fault that will never
+ * clear on its own, so surface the request-shaped failures with their own code.
+ */
+function describeCredentialAcquisitionFailure(error: unknown): string {
+  if (!(error instanceof HttpError) || error.status >= 500) return "GitHub credentials are temporarily unavailable";
+  const details = error.details && typeof error.details === "object" ? error.details as { code?: unknown } : {};
+  const code = typeof details.code === "string" && details.code ? details.code : "credential_unresolvable";
+  return `The managed GitHub credential cannot be resolved (${code}): ${error.message}`;
+}
+
+type ManagedGitHubCredentialResult = {
+  configured: boolean;
+  identitySource?: "personal" | "dedicated";
+  credential?: GitCredential;
+  error?: string;
+};
+
 export async function resolveManagedGitHubCredential(
   db: Db,
   secrets: GitCredentialSecretsDeps,
@@ -472,20 +498,28 @@ export async function resolveManagedGitHubCredential(
     agentId?: string | null;
     allowStandingDelegation?: boolean;
   },
-): Promise<{ configured: boolean; identitySource?: "personal" | "dedicated"; credential?: GitCredential; error?: string }> {
+): Promise<ManagedGitHubCredentialResult> {
   const selection = await resolveManagedGitHubIdentitySelection(db, companyId, context);
   if (!selection.configured) return { configured: false };
   if (!selection.grant) return { configured: true, identitySource: selection.identitySource, error: selection.error };
-  const acquire = async (selection: Awaited<ReturnType<typeof resolveManagedGitHubIdentitySelection>>) => {
+  const acquire = async (selection: Awaited<ReturnType<typeof resolveManagedGitHubIdentitySelection>>): Promise<ManagedGitHubCredentialResult> => {
     let grant = selection.grant!;
-    if (grant.kind === "user" && grant.subjectUserId) {
+    const fail = (error: string): ManagedGitHubCredentialResult => ({ configured: true, identitySource: selection.identitySource, error });
+    // A personal credential stays readable only while its owner is an authorized
+    // company member. The check is keyed on whoever owns the credential, not on
+    // the grant's subject, so lending an identity through a dedicated agent grant
+    // cannot outlive the owner's membership or survive a downgrade to viewer.
+    const isAuthorizedMember = async (userId: string) => {
       const [membership] = await db.select({ id: companyMemberships.id, role: companyMemberships.membershipRole }).from(companyMemberships).where(and(
         eq(companyMemberships.companyId, companyId),
         eq(companyMemberships.principalType, "user"),
-        eq(companyMemberships.principalId, grant.subjectUserId),
+        eq(companyMemberships.principalId, userId),
         eq(companyMemberships.status, "active"),
       )).limit(1);
-      if (!membership || membership.role === "viewer") return { configured: true, identitySource: selection.identitySource, error: "The managed GitHub identity owner is not an authorized company member" };
+      return Boolean(membership) && membership!.role !== "viewer";
+    };
+    if (grant.kind === "user" && grant.subjectUserId && !await isAuthorizedMember(grant.subjectUserId)) {
+      return fail("The managed GitHub identity owner is not an authorized company member");
     }
     const expiresAt = grant.providerTenant?.oauth?.accessTokenExpiresAt;
     const refreshedAt = grant.providerTenant?.oauth?.refreshedAt;
@@ -520,26 +554,38 @@ export async function resolveManagedGitHubCredential(
       heartbeatRunId: context.heartbeatRunId ?? null,
       responsibleUserId: context.responsibleUserId ?? null,
     };
+    // Resolution follows the *secret's* scope, not the grant's kind. Keying it on
+    // the grant kind meant any non-`user` grant took the company-secret path, and
+    // a company-scoped resolution of a user-scoped secret always throws
+    // `secret_scope_invalid` — so a dedicated agent grant pointing at an
+    // operator's personal GitHub credential could be selected but never read.
+    const [secret] = await db.select({
+      scope: companySecrets.scope,
+      ownerUserId: companySecrets.ownerUserId,
+      userSecretDefinitionId: companySecrets.userSecretDefinitionId,
+    }).from(companySecrets).where(and(
+      eq(companySecrets.companyId, companyId),
+      eq(companySecrets.id, accessRef.secretId),
+    )).limit(1);
+    if (!secret) return fail("The managed GitHub credential is invalid");
     let token: string;
-    if (grant.kind === "user") {
-      if (!grant.subjectUserId || !secrets.resolveUserSecretValue) {
-        return { configured: true, identitySource: selection.identitySource, error: "The personal GitHub credential cannot be resolved" };
+    if (secret.scope === "user") {
+      const ownerUserId = secret.ownerUserId;
+      if (!secrets.resolveUserSecretValue) return fail("The personal GitHub credential cannot be resolved");
+      if (!ownerUserId || !secret.userSecretDefinitionId) return fail("The personal GitHub credential is invalid");
+      // A `user` grant may only ever read its own subject's credential; a
+      // dedicated agent grant borrows whichever owner the operator bound to it.
+      if (grant.kind === "user" && grant.subjectUserId !== ownerUserId) return fail("The personal GitHub credential is invalid");
+      if (ownerUserId !== grant.subjectUserId && !await isAuthorizedMember(ownerUserId)) {
+        return fail("The managed GitHub identity owner is not an authorized company member");
       }
-      const [secret] = await db.select({
-        userSecretDefinitionId: companySecrets.userSecretDefinitionId,
-      }).from(companySecrets).where(and(
-        eq(companySecrets.companyId, companyId),
-        eq(companySecrets.id, accessRef.secretId),
-        eq(companySecrets.ownerUserId, grant.subjectUserId),
-      )).limit(1);
-      if (!secret?.userSecretDefinitionId) return { configured: true, identitySource: selection.identitySource, error: "The personal GitHub credential is invalid" };
       const resolved = await secrets.resolveUserSecretValue(companyId, {
         definitionId: secret.userSecretDefinitionId,
-        responsibleUserId: grant.subjectUserId,
+        responsibleUserId: ownerUserId,
         version: accessRef.versionSelector ?? "latest",
         required: true,
       }, accessContext);
-      if (!resolved) return { configured: true, identitySource: selection.identitySource, error: "The personal GitHub credential is missing" };
+      if (!resolved) return fail("The personal GitHub credential is missing");
       token = resolved.value;
     } else {
       token = await secrets.resolveSecretValue(companyId, accessRef.secretId, accessRef.versionSelector ?? "latest", { accessContext });
@@ -562,8 +608,8 @@ export async function resolveManagedGitHubCredential(
     const result = await acquire(selection);
     if (result.credential) return result;
     failure = result;
-  } catch {
-    failure = { configured: true, identitySource: selection.identitySource, error: "GitHub credentials are temporarily unavailable" };
+  } catch (error) {
+    failure = { configured: true, identitySource: selection.identitySource, error: describeCredentialAcquisitionFailure(error) };
   }
   // Retry credential acquisition, never the GitHub operation. An alternate
   // authorization must still belong to this exact principal and account.

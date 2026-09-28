@@ -3545,25 +3545,10 @@ export function createToolGatewayService(
       issueId: session.issueId,
       heartbeatRunId: session.runId,
     };
-    if (grant.kind !== "user") {
-      return secrets.resolveSecretValue(
-        connection.companyId,
-        ref.secretId,
-        ref.versionSelector ?? "latest",
-        { accessContext },
-      );
-    }
-    if (!grant.subjectUserId) {
-      throw new ToolGatewayHttpError(
-        422,
-        "Personal authorization has no owner",
-        "grant_owner_missing",
-        {
-          connectionId: connection.id,
-          grantId: grant.id,
-        },
-      );
-    }
+    // Which resolution path applies is a property of the secret, not of the
+    // grant: a dedicated agent grant can carry an operator's user-scoped
+    // credential, and the company path rejects every user-scoped secret
+    // outright. Read the secret first, then pick the path it actually needs.
     const [secret] = await db
       .select({
         scope: companySecrets.scope,
@@ -3578,11 +3563,41 @@ export function createToolGatewayService(
         ),
       )
       .limit(1);
+    if (!secret || secret.scope !== "user") {
+      if (grant.kind === "user") {
+        throw new ToolGatewayHttpError(
+          422,
+          "Personal authorization has an invalid credential",
+          "grant_credential_invalid",
+          {
+            connectionId: connection.id,
+            grantId: grant.id,
+            credential: configPath,
+          },
+        );
+      }
+      return secrets.resolveSecretValue(
+        connection.companyId,
+        ref.secretId,
+        ref.versionSelector ?? "latest",
+        { accessContext },
+      );
+    }
+    if (grant.kind === "user" && !grant.subjectUserId) {
+      throw new ToolGatewayHttpError(
+        422,
+        "Personal authorization has no owner",
+        "grant_owner_missing",
+        {
+          connectionId: connection.id,
+          grantId: grant.id,
+        },
+      );
+    }
     if (
-      !secret ||
-      secret.scope !== "user" ||
-      secret.ownerUserId !== grant.subjectUserId ||
-      !secret.userSecretDefinitionId
+      !secret.ownerUserId ||
+      !secret.userSecretDefinitionId ||
+      (grant.kind === "user" && secret.ownerUserId !== grant.subjectUserId)
     ) {
       throw new ToolGatewayHttpError(
         422,
@@ -3595,11 +3610,41 @@ export function createToolGatewayService(
         },
       );
     }
+    if (secret.ownerUserId !== grant.subjectUserId) {
+      // The grant is borrowing someone else's personal credential. A `user`
+      // grant's own subject is vetted where the grant is selected; an owner
+      // reached this way is not, so hold the borrowed identity to the same
+      // membership bar rather than letting it outlive the owner's access.
+      const [member] = await db
+        .select({ role: companyMemberships.membershipRole })
+        .from(companyMemberships)
+        .where(
+          and(
+            eq(companyMemberships.companyId, connection.companyId),
+            eq(companyMemberships.principalType, "user"),
+            eq(companyMemberships.principalId, secret.ownerUserId),
+            eq(companyMemberships.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!member || member.role === "viewer") {
+        throw new ToolGatewayHttpError(
+          403,
+          "The personal grant owner is not an authorized company member",
+          "grant_owner_membership_inactive",
+          {
+            connectionId: connection.id,
+            grantId: grant.id,
+            credential: configPath,
+          },
+        );
+      }
+    }
     const resolved = await secrets.resolveUserSecretValue(
       connection.companyId,
       {
         definitionId: secret.userSecretDefinitionId,
-        responsibleUserId: grant.subjectUserId,
+        responsibleUserId: secret.ownerUserId,
         version: ref.versionSelector ?? "latest",
         required: ref.required ?? true,
       },
@@ -3618,6 +3663,41 @@ export function createToolGatewayService(
       );
     }
     return resolved.value;
+  }
+
+  /**
+   * Report a credential that could not be resolved for an outbound MCP call.
+   * Never returns.
+   *
+   * A typed gateway refusal already names the exact fault — an invalid
+   * credential reference, an owner who is no longer an authorized member —
+   * and flattening all of them into `mcp_remote_missing_secret` leaves an
+   * operator with no way to tell a misconfiguration from a revoked principal.
+   * An authorization refusal is also not evidence about the connection's
+   * credential material, so it must not degrade connection health for the
+   * other grants that share the connection.
+   */
+  async function reportCredentialResolutionFailure(
+    connection: typeof toolConnections.$inferSelect,
+    error: unknown,
+    credential: string,
+  ): Promise<never> {
+    const authorizationRefusal =
+      error instanceof ToolGatewayHttpError && error.status === 403;
+    if (!authorizationRefusal) {
+      await markRemoteConnectionHealth(
+        connection,
+        "missing_secret",
+        "A configured credential secret could not be resolved.",
+      );
+    }
+    if (error instanceof ToolGatewayHttpError) throw error;
+    throw new ToolGatewayHttpError(
+      422,
+      "A configured credential secret could not be resolved.",
+      "mcp_remote_missing_secret",
+      { connectionId: connection.id, credential },
+    );
   }
 
   async function maybeRefreshPaperclipCloudGrant(
@@ -4105,18 +4185,8 @@ export function createToolGatewayService(
             : `credentials.${ref.name}`,
         );
         headers[ref.key] = `${ref.prefix ?? ""}${value}`;
-      } catch {
-        await markRemoteConnectionHealth(
-          connection,
-          "missing_secret",
-          "A configured credential secret could not be resolved.",
-        );
-        throw new ToolGatewayHttpError(
-          422,
-          "A configured credential secret could not be resolved.",
-          "mcp_remote_missing_secret",
-          { connectionId: connection.id, credential: ref.name },
-        );
+      } catch (error) {
+        await reportCredentialResolutionFailure(connection, error, ref.name);
       }
     }
     const oauthAccessRef = grant.credentialSecretRefs.find(
@@ -4131,20 +4201,11 @@ export function createToolGatewayService(
           oauthAccessRef,
         );
         headers.Authorization = `Bearer ${value}`;
-      } catch {
-        await markRemoteConnectionHealth(
+      } catch (error) {
+        await reportCredentialResolutionFailure(
           connection,
-          "missing_secret",
-          "A configured credential secret could not be resolved.",
-        );
-        throw new ToolGatewayHttpError(
-          422,
-          "A configured credential secret could not be resolved.",
-          "mcp_remote_missing_secret",
-          {
-            connectionId: connection.id,
-            credential: oauthAccessRef.configPath,
-          },
+          error,
+          oauthAccessRef.configPath,
         );
       }
     }

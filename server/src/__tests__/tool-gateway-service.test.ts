@@ -1641,6 +1641,61 @@ describeEmbeddedPostgres("tool gateway service", () => {
     expect(refreshed).toEqual(upstreamFailure ? [grants[1]!.id] : [grants[1]!.id, grants[0]!.id]);
   });
 
+  it("dispatches a user-scoped credential carried by a dedicated agent grant, and stops when its owner loses access", async () => {
+    // An operator lends their personal GitHub credential to one agent by
+    // pointing an `agent` grant at their user-scoped secret. Resolution has to
+    // follow the secret's scope, not the grant's kind, or the company path
+    // rejects it as `secret_scope_invalid` and the connector reports a missing
+    // credential while the registry still calls the connection ready.
+    const { company, agent, issue, run } = await createRunFixture(db);
+    const { connection } = await createRemoteMcpToolFixture(db, company.id);
+    await db.update(toolConnections).set({ authKind: "oauth", credentialSource: "paperclip_vault",
+      config: { ...connection.config, sourceTemplateKey: "github" },
+    }).where(eq(toolConnections.id, connection.id));
+    await db.insert(toolConnectionInstalls).values({ companyId: company.id,
+      connectionId: connection.id, targetType: "agent", targetId: agent.id });
+    await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user",
+      principalId: "A", status: "active", membershipRole: "member" });
+    const vault = secretService(db);
+    const definition = await vault.createUserSecretDefinition(company.id, {
+      key: `github_${randomUUID().replace(/-/g, "")}`, name: "Personal GitHub token", provider: "local_encrypted",
+    }, { userId: "A" });
+    const secret = await vault.createCurrentUserSecretValue(company.id, "A",
+      { definitionId: definition.id, value: "owner-token" }, { userId: "A" });
+    await vault.syncUserSecretDeclarationsForTarget(company.id,
+      { targetType: "tool_connection", targetId: connection.id },
+      [{ definitionKey: definition.key, configPath: "oauth.access_token", envKey: "GITHUB_TOKEN", required: true }]);
+    const [grant] = await db.insert(connectionGrants).values({ companyId: company.id,
+      connectionId: connection.id, kind: "agent", subjectAgentId: agent.id, status: "active",
+      credentialSecretRefs: [{ secretId: secret.id, configPath: "oauth.access_token", versionSelector: "latest" }],
+      providerTenant: { github: { userId: "42", login: "octocat", installationCount: 1,
+        repositoryCount: 1, repositorySelection: "all", installationIds: ["101"] } },
+    }).returning();
+    await initializeRunIdentity(db, { companyId: company.id, runId: run.id, issueId: issue.id,
+      responsibleUserId: "A", cause: "instruction" });
+    await db.insert(toolPolicies).values({ companyId: company.id, name: "Allow reads",
+      policyType: "allow", selectors: { riskLevel: "read" } });
+    const dispatched = vi.fn(async (_url: string, init: RequestInit) =>
+      new Response(JSON.stringify({ jsonrpc: "2.0", id: JSON.parse(String(init.body)).id,
+        result: { content: [{ type: "text", text: "ok" }] } }),
+      { status: 200, headers: { "content-type": "application/json" } }));
+    const gateway = createTestToolGatewayService(db, {
+      oauthGrantRefresher: async () => grant!, remoteHttpRequest: dispatched,
+    });
+    const session = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const tool = (await gateway.listToolsForSession(session.token)).find(t => t.providerType === "mcp_remote_http")!;
+
+    expect((await gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: {} })).status).toBe("completed");
+    expect(new Headers(dispatched.mock.calls[0]![1].headers).get("authorization")).toBe("Bearer owner-token");
+
+    // The borrowed identity is held to its owner's membership, which no `user`
+    // grant check covers because the grant's own subject is an agent.
+    await db.delete(companyMemberships).where(eq(companyMemberships.companyId, company.id));
+    await expect(gateway.executeTool({ sessionToken: session.token, tool: tool.name, parameters: {} }))
+      .rejects.toMatchObject({ reasonCode: "grant_owner_membership_inactive" });
+    expect(dispatched).toHaveBeenCalledTimes(1);
+  });
+
   it("refreshes a customer OAuth grant once and retries after an upstream 401", async () => {
     const { company, agent, run } = await createRunFixture(db);
     const { connection } = await createRemoteMcpToolFixture(db, company.id);

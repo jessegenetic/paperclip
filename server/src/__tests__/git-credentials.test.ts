@@ -3,7 +3,16 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { Db } from "@paperclipai/db";
+import {
+  companyMemberships,
+  companySecrets,
+  connectionGrantDelegations,
+  connectionGrants,
+  toolConnectionInstalls,
+  toolConnections,
+  type Db,
+} from "@paperclipai/db";
+import { HttpError } from "../errors.ts";
 import {
   DEFAULT_GITHUB_TOKEN_SECRET_NAMES,
   GIT_CREDENTIAL_TOKEN_ENV_KEY,
@@ -11,6 +20,7 @@ import {
   createGitRemoteAuthProvider,
   describeGitAuthFailure,
   isGitHubHttpsRemoteUrl,
+  resolveManagedGitHubCredential,
   scrubGitCredentialText,
 } from "../services/git-credentials.ts";
 
@@ -345,6 +355,178 @@ describe("describeGitAuthFailure", () => {
       error: "fatal: destination path '/x/y' already exists and is not an empty directory.",
       used: { source: "company_secret", secretName: "GH_TOKEN" },
     })).toBeNull();
+  });
+});
+
+describe("resolveManagedGitHubCredential", () => {
+  const githubTenant = {
+    github: { userId: "gh-1", login: "operator", installationCount: 1, repositoryCount: 1 },
+  };
+
+  // The resolver reads six tables through the same `select().from().where()` shape
+  // (two of them with `.limit(1)`), so dispatch canned rows by table identity and
+  // let the resolver's own filtering decide what it does with them.
+  function buildManagedDb(rows: Partial<Record<
+    "connections" | "installs" | "grants" | "delegations" | "secrets" | "memberships",
+    unknown[]
+  >>) {
+    const byTable = new Map<unknown, unknown[]>([
+      [toolConnections, rows.connections ?? []],
+      [toolConnectionInstalls, rows.installs ?? []],
+      [connectionGrants, rows.grants ?? []],
+      [connectionGrantDelegations, rows.delegations ?? []],
+      [companySecrets, rows.secrets ?? []],
+      [companyMemberships, rows.memberships ?? []],
+    ]);
+    const answer = (table: unknown) => {
+      const data = byTable.get(table) ?? [];
+      const pending = Promise.resolve(data) as Promise<unknown[]> & { limit: (count: number) => Promise<unknown[]> };
+      pending.limit = async (count: number) => data.slice(0, count);
+      return pending;
+    };
+    const from = (table: unknown) => ({
+      where: () => answer(table),
+      leftJoin: () => ({ where: () => answer(table) }),
+    });
+    return { select: () => ({ from }) } as unknown as Db;
+  }
+
+  function buildScenario(options: {
+    grant: Record<string, unknown>;
+    secret?: Record<string, unknown> | null;
+    memberships?: unknown[];
+    resolveSecretValue?: () => Promise<string>;
+  }) {
+    const db = buildManagedDb({
+      connections: [{
+        id: "github-connection", companyId: "company-1", enabled: true, status: "active",
+        healthStatus: "ok", config: { sourceTemplateKey: "github" },
+      }],
+      installs: [{
+        connectionId: "github-connection", companyId: "company-1",
+        targetType: "company", targetId: "company-1",
+      }],
+      grants: [{
+        id: "grant-1", companyId: "company-1", connectionId: "github-connection",
+        status: "active", createdAt: new Date("2026-09-28T00:00:00Z"),
+        credentialSecretRefs: [{ secretId: "secret-1", configPath: "oauth.access_token" }],
+        providerTenant: githubTenant, subjectUserId: null, subjectAgentId: null,
+        ...options.grant,
+      }],
+      secrets: options.secret === null ? [] : [{
+        scope: "user", ownerUserId: "owner-1", userSecretDefinitionId: "definition-1",
+        ...options.secret,
+      }],
+      memberships: options.memberships ?? [{ id: "membership-1", role: "admin" }],
+    });
+    const resolveUserSecretValue = vi.fn(async () => ({ value: "personal-token" }));
+    // Mirror the real secret service: the company-secret path refuses a
+    // user-scoped secret (secrets.ts `secret_scope_invalid`), which is exactly
+    // the throw that made a dedicated agent grant unusable.
+    const scope = options.secret?.scope ?? "user";
+    const secrets = {
+      ...buildSecretsFake({}),
+      resolveSecretValue: vi.fn(options.resolveSecretValue ?? (async () => {
+        if (scope !== "company") {
+          throw new HttpError(422, "User-scoped secrets must be resolved through user secret declarations", {
+            code: "secret_scope_invalid",
+          });
+        }
+        return "company-token";
+      })),
+      resolveUserSecretValue,
+    } as unknown as Parameters<typeof resolveManagedGitHubCredential>[1];
+    return { db, secrets, resolveUserSecretValue };
+  }
+
+  it("reads a user-scoped credential through a dedicated agent grant", async () => {
+    const { db, secrets, resolveUserSecretValue } = buildScenario({
+      grant: { kind: "agent", subjectAgentId: "agent-a" },
+    });
+
+    const result = await resolveManagedGitHubCredential(db, secrets, "company-1", { agentId: "agent-a" });
+
+    expect(result.error).toBeUndefined();
+    expect(result.credential?.token).toBe("personal-token");
+    expect(result.credential?.identitySource).toBe("dedicated");
+    // The credential is attributed to its owner, not to the borrowing agent, so
+    // the secret access event still names the real principal.
+    expect(resolveUserSecretValue).toHaveBeenCalledWith(
+      "company-1",
+      expect.objectContaining({ definitionId: "definition-1", responsibleUserId: "owner-1" }),
+      expect.anything(),
+    );
+  });
+
+  it("refuses a borrowed credential whose owner is no longer an authorized member", async () => {
+    const revoked = buildScenario({ grant: { kind: "agent", subjectAgentId: "agent-a" }, memberships: [] });
+    await expect(resolveManagedGitHubCredential(revoked.db, revoked.secrets, "company-1", { agentId: "agent-a" }))
+      .resolves.toMatchObject({ error: "The managed GitHub identity owner is not an authorized company member" });
+    expect(revoked.resolveUserSecretValue).not.toHaveBeenCalled();
+
+    const viewer = buildScenario({
+      grant: { kind: "agent", subjectAgentId: "agent-a" },
+      memberships: [{ id: "membership-1", role: "viewer" }],
+    });
+    await expect(resolveManagedGitHubCredential(viewer.db, viewer.secrets, "company-1", { agentId: "agent-a" }))
+      .resolves.toMatchObject({ error: "The managed GitHub identity owner is not an authorized company member" });
+    expect(viewer.resolveUserSecretValue).not.toHaveBeenCalled();
+  });
+
+  it("keeps a user grant pinned to its own subject", async () => {
+    const { db, secrets, resolveUserSecretValue } = buildScenario({
+      grant: { kind: "user", subjectUserId: "someone-else" },
+    });
+
+    const result = await resolveManagedGitHubCredential(db, secrets, "company-1", {
+      responsibleUserId: "someone-else",
+    });
+
+    expect(result.credential).toBeUndefined();
+    expect(result.error).toBe("The personal GitHub credential is invalid");
+    expect(resolveUserSecretValue).not.toHaveBeenCalled();
+  });
+
+  it("still resolves a company-scoped credential through the company path", async () => {
+    const { db, secrets, resolveUserSecretValue } = buildScenario({
+      grant: { kind: "agent", subjectAgentId: "agent-a" },
+      secret: { scope: "company", ownerUserId: null, userSecretDefinitionId: null },
+    });
+
+    const result = await resolveManagedGitHubCredential(db, secrets, "company-1", { agentId: "agent-a" });
+
+    expect(result.credential?.token).toBe("company-token");
+    expect(resolveUserSecretValue).not.toHaveBeenCalled();
+  });
+
+  it("reports a configuration failure with its code instead of calling it temporary", async () => {
+    const { db, secrets } = buildScenario({
+      grant: { kind: "agent", subjectAgentId: "agent-a" },
+      secret: { scope: "company", ownerUserId: null, userSecretDefinitionId: null },
+      resolveSecretValue: async () => {
+        throw new HttpError(422, "User-scoped secrets must be resolved through user secret declarations", {
+          code: "secret_scope_invalid",
+        });
+      },
+    });
+
+    const result = await resolveManagedGitHubCredential(db, secrets, "company-1", { agentId: "agent-a" });
+
+    expect(result.credential).toBeUndefined();
+    expect(result.error).toContain("secret_scope_invalid");
+    expect(result.error).not.toContain("temporarily unavailable");
+  });
+
+  it("still reports an unexpected failure as temporary", async () => {
+    const { db, secrets } = buildScenario({
+      grant: { kind: "agent", subjectAgentId: "agent-a" },
+      secret: { scope: "company", ownerUserId: null, userSecretDefinitionId: null },
+      resolveSecretValue: async () => { throw new Error("provider outage"); },
+    });
+
+    const result = await resolveManagedGitHubCredential(db, secrets, "company-1", { agentId: "agent-a" });
+
+    expect(result.error).toBe("GitHub credentials are temporarily unavailable");
   });
 });
 
