@@ -145,7 +145,11 @@ export async function resolveGitHubOperationCredentials(
       {
         agentId: input.agentId,
         heartbeatRunId: input.runId,
-        allowStandingDelegation: false,
+        // A `company_default` run has no operator behind it, so it must not
+        // borrow a principal implicitly -- hence the null below. An owner's
+        // standing delegation is the explicit, audited exception to that, and it
+        // is now reachable here: this call used to disable the delegation pool
+        // while simultaneously producing the only context that pool accepted.
         responsibleUserId:
           context?.cause === "company_default"
             ? null

@@ -21160,7 +21160,6 @@ export function heartbeatService(
         {
           agentId: agent.id,
           responsibleUserId,
-          allowStandingDelegation: false,
         },
       );
       const useHostGitHub =

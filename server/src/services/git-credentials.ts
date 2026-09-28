@@ -300,7 +300,6 @@ export async function resolveManagedGitHubIdentitySelection(
   context: {
     responsibleUserId?: string | null;
     agentId?: string | null;
-    allowStandingDelegation?: boolean;
     excludeGrantId?: string;
   },
 ): Promise<{
@@ -347,11 +346,26 @@ export async function resolveManagedGitHubIdentitySelection(
     : [];
   // Connections are already restricted above to the owner-selected install
   // targets. Within that consent boundary the server-resolved responsible user
-  // is authoritative; standing delegation is only an ownerless-run fallback.
+  // is authoritative, so a grant subjected to this run's own principal still
+  // wins over any delegation.
   const personal = context.responsibleUserId
     ? grants.filter((grant) => grant.kind === "user" && grant.subjectUserId === context.responsibleUserId)
     : [];
-  const delegated = context.allowStandingDelegation !== false && !context.responsibleUserId && context.agentId
+  // Standing delegation is the owner-authorized, audited way to lend a personal
+  // identity to one agent (`POST /tool-connections/{id}/grants/{grantId}/delegations`).
+  // It used to be unreachable from every path that can actually issue a
+  // credential: each of those hard-coded `allowStandingDelegation: false`, and
+  // the pool additionally required a *null* responsible user -- which the broker
+  // only produces for `company_default` runs, the one case the flag switched off.
+  // Readiness was the sole caller that left the flag unset, so a delegation was
+  // visible exactly where it could not hand out a token and invisible everywhere
+  // it could. Precedence alone already makes this a last-resort pool: it is
+  // consulted only when neither a dedicated agent grant nor a grant subjected to
+  // the run's own principal matched, so it cannot shadow either. Resolution still
+  // holds the borrowed credential to its owner's active, non-viewer membership.
+  // Queried only once both higher-precedence pools are empty, so the common path
+  // keeps its previous round-trip count.
+  const delegated = async () => context.agentId
     ? await db.select({ grantId: connectionGrantDelegations.grantId }).from(connectionGrantDelegations).where(and(
         eq(connectionGrantDelegations.companyId, companyId),
         eq(connectionGrantDelegations.agentId, context.agentId),
@@ -361,7 +375,7 @@ export async function resolveManagedGitHubIdentitySelection(
         return grants.filter((grant) => grant.kind === "user" && delegatedIds.has(grant.id));
       })
     : [];
-  const candidates = dedicated.length > 0 ? dedicated : personal.length > 0 ? personal : delegated;
+  const candidates = dedicated.length > 0 ? dedicated : personal.length > 0 ? personal : await delegated();
   const identitySource = dedicated.length > 0 ? "dedicated" as const : "personal" as const;
   // Reconnecting can create another connection/grant for the same GitHub
   // account. Ambiguity is about provider identities, not the number of rows.
@@ -530,7 +544,6 @@ export async function resolveManagedGitHubCredential(
     heartbeatRunId?: string | null;
     responsibleUserId?: string | null;
     agentId?: string | null;
-    allowStandingDelegation?: boolean;
   },
 ): Promise<ManagedGitHubCredentialResult> {
   const selection = await resolveManagedGitHubIdentitySelection(db, companyId, context);

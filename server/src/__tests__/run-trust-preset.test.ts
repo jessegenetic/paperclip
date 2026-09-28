@@ -307,9 +307,14 @@ it("dispatch retains raw trust before workspace and broker setup", () => {
         input.companyId,
         expect.objectContaining({
           responsibleUserId: "accepted-author",
-          allowStandingDelegation: false,
         }),
       );
+      // The credential export must not disable standing delegation. It used to
+      // pass `allowStandingDelegation: false`, which made an owner-authorized
+      // delegation unusable on every path that can actually issue a token.
+      expect(
+        credentials.resolveManagedGitHubCredential.mock.calls.at(-1)?.[3],
+      ).not.toHaveProperty("allowStandingDelegation");
     });
 
     it("retains a raw top-level project preset even when isolated workspaces are disabled", async () => {

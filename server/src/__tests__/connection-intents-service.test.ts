@@ -33,6 +33,7 @@ import { issueThreadInteractionService } from "../services/issue-thread-interact
 import { PaperclipRunnerToolAuthority } from "../services/native-runtime/paperclip-runner-tool-authority.js";
 import { materializeNativeInteractionResponses } from "../services/native-runtime/native-interaction-bridge.js";
 import { connectionIntentService } from "../services/connection-intents.js";
+import { resolveManagedGitHubIdentitySelection } from "../services/git-credentials.js";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -902,6 +903,86 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     const request = await service.request(githubClaims, "github");
     expect(request.state).toBe("needs_user_action");
     expect(request.interactionId).not.toBeNull();
+  });
+
+  it("selects a standing delegation for the delegated agent only, whatever principal the run resolves", async () => {
+    const companyId = claims.company_id;
+    const ownerUserId = claims.responsible_user_id;
+    const delegatedAgentId = randomUUID();
+    const otherAgentId = randomUUID();
+    for (const [id, name] of [[delegatedAgentId, "Delegated Agent"], [otherAgentId, "Other Agent"]] as const) {
+      await db.insert(agents).values({ id, companyId, name, role: "engineer", status: "active", adapterType: "claude_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
+    }
+
+    const [application] = await db.insert(toolApplications).values({
+      companyId, applicationKey: `github-${randomUUID()}`, name: `GitHub (delegated ${randomUUID()})`, type: "mcp_http",
+      status: "active", metadata: { sourceTemplateKey: "github" },
+    }).returning();
+    const [connection] = await db.insert(toolConnections).values({
+      companyId, applicationId: application!.id, name: `Operator's GitHub ${randomUUID()}`, uid: `github/${randomUUID()}`,
+      transport: "mcp_remote", authKind: "oauth", credentialPolicy: "per_agent", status: "active",
+      enabled: true, healthStatus: "ok",
+      config: { sourceTemplateKey: "github" }, transportConfig: { sourceTemplateKey: "github" },
+    }).returning();
+    // Installed company-wide, so connection eligibility is identical for both
+    // agents and the delegation is the only thing that can tell them apart.
+    await db.insert(toolConnectionInstalls).values({ companyId, connectionId: connection!.id, targetType: "company", targetId: companyId });
+
+    const [secret] = await db.insert(companySecrets).values({
+      companyId, scope: "company", key: `github-token-${randomUUID()}`, name: "GitHub token", status: "active",
+    }).returning();
+    // The operator's own personal grant. Neither agent has a dedicated grant, and
+    // the grant's subject is the owner -- not either agent's run principal.
+    const [grant] = await db.insert(connectionGrants).values({
+      companyId, connectionId: connection!.id, kind: "user", subjectUserId: ownerUserId, status: "active",
+      createdByUserId: ownerUserId,
+      providerTenant: { github: {
+        userId: "gh-1", login: "operator", installationCount: 1, repositoryCount: 4,
+        repositorySelection: "all", installationIds: ["1"], installationOwnerLogins: ["operator"],
+      } },
+      credentialSecretRefs: [{ secretId: secret!.id, configPath: "oauth.access_token" }],
+    }).returning();
+
+    // Before the delegation exists nothing matches an agent-run principal, for
+    // either agent. This is the shape the identity broker reported as
+    // `candidates.length === 0` / "No managed GitHub identity is available".
+    for (const responsibleUserId of [null, `unrelated-${randomUUID()}`]) {
+      const before = await resolveManagedGitHubIdentitySelection(db, companyId, { agentId: delegatedAgentId, responsibleUserId });
+      expect(before.configured).toBe(true);
+      expect(before.grant).toBeUndefined();
+      expect(before.error).toBe("No managed GitHub identity is available for this run");
+    }
+
+    await db.insert(connectionGrantDelegations).values({
+      companyId, grantId: grant!.id, agentId: delegatedAgentId, createdByUserId: ownerUserId,
+    });
+
+    // A delegation has to be honoured on the runs that can actually issue a
+    // credential. Those resolve a principal for `issue_commented` work and null it
+    // for `company_default` work, and the pool used to be unreachable in both: the
+    // credential paths hard-coded `allowStandingDelegation: false`, and the pool
+    // itself additionally demanded a null principal.
+    for (const responsibleUserId of [null, `unrelated-${randomUUID()}`]) {
+      const selection = await resolveManagedGitHubIdentitySelection(db, companyId, { agentId: delegatedAgentId, responsibleUserId });
+      expect(selection.grant?.id).toBe(grant!.id);
+      expect(selection.identitySource).toBe("personal");
+    }
+
+    // Delegation is per agent. The undelegated agent sees nothing, which is what
+    // keeps this narrower than a company-wide loan of the operator's identity.
+    const undelegated = await resolveManagedGitHubIdentitySelection(db, companyId, { agentId: otherAgentId, responsibleUserId: null });
+    expect(undelegated.grant).toBeUndefined();
+    expect(undelegated.error).toBe("No managed GitHub identity is available for this run");
+
+    // The owner's own runs keep using their own grant directly: precedence puts
+    // `personal` ahead of `delegated`, so a delegation can never shadow it.
+    await expect(resolveManagedGitHubIdentitySelection(db, companyId, { agentId: otherAgentId, responsibleUserId: ownerUserId }))
+      .resolves.toMatchObject({ grant: expect.objectContaining({ id: grant!.id }) });
+
+    await db.delete(connectionGrantDelegations).where(eq(connectionGrantDelegations.grantId, grant!.id));
+    await db.delete(connectionGrants).where(eq(connectionGrants.id, grant!.id));
+    await db.delete(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, connection!.id));
+    await db.delete(toolConnections).where(eq(toolConnections.id, connection!.id));
   });
 
 });

@@ -395,9 +395,11 @@ describe("resolveManagedGitHubCredential", () => {
     grant: Record<string, unknown>;
     secret?: Record<string, unknown> | null;
     memberships?: unknown[];
+    delegations?: unknown[];
     resolveSecretValue?: () => Promise<string>;
   }) {
     const db = buildManagedDb({
+      delegations: options.delegations ?? [],
       connections: [{
         id: "github-connection", companyId: "company-1", enabled: true, status: "active",
         healthStatus: "ok", config: { sourceTemplateKey: "github" },
@@ -600,6 +602,48 @@ describe("resolveManagedGitHubCredential", () => {
       agentId: "agent-a",
     });
     expect(vaultedResult.error).not.toBe(REBIND);
+  });
+
+  // Standing delegation is the owner-authorized route for lending a personal
+  // identity to one agent. Agent scoping is enforced in SQL, so it is proven
+  // against a real database in `connection-intents-service.test.ts`; these cover
+  // the resolution path a selected delegation then has to survive.
+  it("reads a delegated personal credential on a run whose own principal has no grant", async () => {
+    const { db, secrets, resolveUserSecretValue } = buildScenario({
+      grant: { kind: "user", subjectUserId: "owner-1" },
+      delegations: [{ grantId: "grant-1", agentId: "agent-a" }],
+    });
+
+    const result = await resolveManagedGitHubCredential(db, secrets, "company-1", {
+      agentId: "agent-a",
+      // A different principal than the grant's subject. The delegated pool used to
+      // require this to be null, which is the one context the credential export
+      // produced *and* the one where it disabled delegation outright.
+      responsibleUserId: "someone-else",
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.credential?.token).toBe("personal-token");
+    expect(result.credential?.identitySource).toBe("personal");
+    expect(resolveUserSecretValue).toHaveBeenCalledWith(
+      "company-1",
+      expect.objectContaining({ responsibleUserId: "owner-1" }),
+      expect.anything(),
+    );
+  });
+
+  it("refuses a delegated credential once its owner is no longer an authorized member", async () => {
+    const { db, secrets } = buildScenario({
+      grant: { kind: "user", subjectUserId: "owner-1" },
+      delegations: [{ grantId: "grant-1", agentId: "agent-a" }],
+      memberships: [],
+    });
+
+    await expect(resolveManagedGitHubCredential(db, secrets, "company-1", {
+      agentId: "agent-a", responsibleUserId: null,
+    })).resolves.toMatchObject({
+      error: "The managed GitHub identity owner is not an authorized company member",
+    });
   });
 
   it("still reports an unexpected failure as temporary", async () => {
