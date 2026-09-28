@@ -68,6 +68,28 @@ async function sandbox(layout: string) {
   return { root, bin, remotePath, runner, target };
 }
 
+// Shaped like a host OAuth token so a leak trips the credential assertions.
+const HOST_STORED_TOKEN = "gho_hostSecureStorageCredential0123456789";
+
+// Stand in for gh's keychain-backed secure storage. The real keychain is keyed
+// by service name, so GH_CONFIG_DIR cannot namespace it; model that by reading
+// a file outside every staged configuration directory. Resolution order matches
+// gh: an environment token wins, otherwise the stored credential answers.
+async function stageSecureStorageGh(fixture: Awaited<ReturnType<typeof sandbox>>) {
+  const storage = path.join(fixture.root, "host-secure-storage");
+  await writeFile(storage, HOST_STORED_TOKEN);
+  await writeFile(path.join(fixture.bin, "gh"), [
+    "#!/bin/sh",
+    "resolve() {",
+    `  if [ -n "$1" ]; then printf '%s\\n' "$1"; else cat ${JSON.stringify(storage)}; fi`,
+    "}",
+    'resolve "$GH_TOKEN"',
+    'resolve "$GITHUB_TOKEN"',
+    "",
+  ].join("\n"), { mode: 0o700 });
+  return storage;
+}
+
 describe("managed GitHub launcher environment", () => {
   it.each(["module", "commonjs"])("runs managed GitHub launchers inside a %s project", async (type) => {
     const fixture = await sandbox("usr/bin");
@@ -328,9 +350,7 @@ describe("managed GitHub launcher environment", () => {
       expected: "issued-managed-token" },
   ])("hands gh a credential when the broker $name", async (scenario) => {
     const fixture = await sandbox("usr/bin");
-    // Report the credential gh would actually authenticate with.
-    await writeFile(path.join(fixture.bin, "gh"),
-      '#!/bin/sh\nprintf \'%s\\n%s\\n\' "$GH_TOKEN" "$GITHUB_TOKEN"\n', { mode: 0o700 });
+    await stageSecureStorageGh(fixture);
     const broker = createServer((_request, response) => {
       response.writeHead(scenario.status ?? 200, { "content-type": "application/json" });
       response.end(JSON.stringify(scenario.body));
@@ -355,6 +375,32 @@ describe("managed GitHub launcher environment", () => {
       await new Promise<void>((resolve, reject) =>
         broker.close((error) => (error ? reject(error) : resolve())));
     }
+  });
+
+  // Negative control for the scenarios above. Their assertions only mean
+  // something if the stored credential is reachable in the first place, so prove
+  // the pre-fix containment — an empty staged configuration directory and no
+  // environment token — still surfaces it.
+  it("reaches stored credentials through an empty staged gh configuration directory", async () => {
+    const fixture = await sandbox("usr/bin");
+    await stageSecureStorageGh(fixture);
+    const env = await prepareGitHubOperationLaunchers({
+      runId: "run-credential-control", target: fixture.target, cwd: fixture.root,
+      env: githubBrokerEnvironment({}, { url: "", token: "" }),
+    });
+    const staged = path.join(env.PAPERCLIP_GITHUB_LAUNCHER_DIR, "unavailable-gh-config");
+    const withheld = await fixture.runner.execute({
+      command: path.join(fixture.bin, "gh"), args: ["auth", "token"],
+      env: { GH_CONFIG_DIR: staged, GH_TOKEN: "", GITHUB_TOKEN: "" },
+    });
+    expect(withheld.exitCode, withheld.stderr).toBe(0);
+    expect(withheld.stdout).toContain(HOST_STORED_TOKEN);
+    // The staged launcher closes it, so the difference is the sentinel alone.
+    const contained = await fixture.runner.execute({
+      command: path.join(env.PAPERCLIP_GITHUB_LAUNCHER_DIR, "gh"), args: ["auth", "token"], env,
+    });
+    expect(contained.stdout).not.toContain(HOST_STORED_TOKEN);
+    expect(contained.stdout).not.toMatch(/gh[pousr]_[A-Za-z0-9]{20,}/);
   });
 
   // Git has the same keychain reachability as gh: Apple Git ships an
@@ -383,5 +429,26 @@ describe("managed GitHub launcher environment", () => {
     });
     expect(filled.exitCode).not.toBe(0);
     expect(filled.stdout).not.toContain("HOST-SECRET");
+
+    // That helper sat in the host user's own configuration, which the redirected
+    // GIT_CONFIG_GLOBAL already covered. The keychain helper this guards against
+    // ships in Git's *system* configuration instead, so isolate the new switch:
+    // redirecting the system path does not drop a system-scope helper, and the
+    // no-system switch does. Both runs skip the launcher's own credential reset
+    // so the difference between them is the switch alone.
+    const system = path.join(fixture.root, "system-gitconfig");
+    await writeFile(system,
+      '[credential]\n\thelper = "!f() { echo username=host; echo password=SYSTEM-SECRET; }; f"\n');
+    const redirected = { GIT_CONFIG_SYSTEM: system, GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_TERMINAL_PROMPT: "0" };
+    const request = { command: "git", args: ["credential", "fill"],
+      stdin: "protocol=https\nhost=example.invalid\n\n" };
+    const reachable = await fixture.runner.execute({ ...request, env: redirected });
+    expect(reachable.stdout, reachable.stderr).toContain("SYSTEM-SECRET");
+    const dropped = await fixture.runner.execute({
+      ...request, env: { ...redirected, GIT_CONFIG_NOSYSTEM: "1" },
+    });
+    expect(dropped.exitCode).not.toBe(0);
+    expect(dropped.stdout).not.toContain("SYSTEM-SECRET");
   });
 });
