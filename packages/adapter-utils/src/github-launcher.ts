@@ -1,3 +1,11 @@
+/**
+ * Placeholder credential handed to a launcher child when the broker issued none.
+ * It is deliberately not a valid token: gh prefers an environment token over its
+ * keychain-backed secure storage, so filling the name denies the host user's
+ * stored credential instead of merely declining to provide one.
+ */
+export const WITHHELD_GITHUB_CREDENTIAL = "paperclip-github-identity-withheld";
+
 /** Standalone source is staged unchanged on local, SSH, and sandbox runtimes. No secrets in files. */
 export function githubLauncherSource(): string {
   return String.raw`#!/usr/bin/env node
@@ -95,7 +103,7 @@ async function main() {
   // withheld case fail closed with a legible error. Only unset names are
   // filled, which leaves an issued credential untouched.
   for (const key of ['GH_TOKEN', 'GITHUB_TOKEN']) {
-    if (!env[key]) env[key] = 'paperclip-github-identity-withheld';
+    if (!env[key]) env[key] = ${JSON.stringify(WITHHELD_GITHUB_CREDENTIAL)};
   }
   // Only this invocation and its children inherit the captured credential.
   // Its Git children use the real binary, so steering cannot split a gh operation.

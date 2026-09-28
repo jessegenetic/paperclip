@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as ssh from "./ssh.js";
 import type { CommandManagedRuntimeRunner } from "./command-managed-runtime.js";
-import { githubBrokerEnvironment } from "./github-launcher.js";
+import { WITHHELD_GITHUB_CREDENTIAL, githubBrokerEnvironment } from "./github-launcher.js";
 import {
   ensureAdapterExecutionTargetCommandResolvable,
   prepareGitHubOperationLaunchers,
@@ -339,12 +339,12 @@ describe("managed GitHub launcher environment", () => {
   it.each([
     { name: "issues no managed identity", body: { status: "unavailable", source: "personal",
       reason: "No managed GitHub identity is available for this run", env: {} },
-      expected: "paperclip-github-identity-withheld" },
+      expected: WITHHELD_GITHUB_CREDENTIAL },
     { name: "answers with an unroutable error", status: 500, body: { error: "broker down" },
-      expected: "paperclip-github-identity-withheld" },
+      expected: WITHHELD_GITHUB_CREDENTIAL },
     { name: "omits GITHUB_TOKEN from an issued identity", body: { status: "available",
       env: { GH_TOKEN: "issued-managed-token" } },
-      expected: "issued-managed-token", expectedGithubToken: "paperclip-github-identity-withheld" },
+      expected: "issued-managed-token", expectedGithubToken: WITHHELD_GITHUB_CREDENTIAL },
     { name: "issues a managed identity", body: { status: "available",
       env: { GH_TOKEN: "issued-managed-token", GITHUB_TOKEN: "issued-managed-token" } },
       expected: "issued-managed-token" },
