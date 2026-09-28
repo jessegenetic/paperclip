@@ -413,8 +413,14 @@ describe("resolveManagedGitHubCredential", () => {
         providerTenant: githubTenant, subjectUserId: null, subjectAgentId: null,
         ...options.grant,
       }],
+      // A complete secret row. Selection now verifies the access token is readable
+      // before handing the grant on, so `id`/`status`/`definitionStatus` are load
+      // bearing: while selection short-circuited on a lone candidate these fields
+      // were never read, and a fixture could omit them and still pass.
       secrets: options.secret === null ? [] : [{
+        id: "secret-1", status: "active", deletedAt: null,
         scope: "user", ownerUserId: "owner-1", userSecretDefinitionId: "definition-1",
+        definitionStatus: "active", definitionDeletedAt: null,
         ...options.secret,
       }],
       memberships: options.memberships ?? [{ id: "membership-1", role: "admin" }],
@@ -515,6 +521,85 @@ describe("resolveManagedGitHubCredential", () => {
     expect(result.credential).toBeUndefined();
     expect(result.error).toContain("secret_scope_invalid");
     expect(result.error).not.toContain("temporarily unavailable");
+  });
+
+  // A lone candidate used to skip credential validation entirely, so selection
+  // returned a grant whose token could not be read. Agent-facing readiness reports
+  // a connection `ready` from that selection alone, which is how the same
+  // connection could advertise itself as usable and then hand back no credentials.
+  const REBIND = "The managed GitHub identity's access token cannot be read; rebind the connection's credentials";
+
+  it("refuses a lone grant whose access-token secret is missing or deleted", async () => {
+    const absent = buildScenario({ grant: { kind: "agent", subjectAgentId: "agent-a" }, secret: null });
+    await expect(resolveManagedGitHubCredential(absent.db, absent.secrets, "company-1", { agentId: "agent-a" }))
+      .resolves.toMatchObject({ configured: true, error: REBIND });
+    expect(absent.resolveUserSecretValue).not.toHaveBeenCalled();
+
+    const deleted = buildScenario({
+      grant: { kind: "agent", subjectAgentId: "agent-a" },
+      secret: { deletedAt: new Date("2026-09-28T00:00:00Z") },
+    });
+    await expect(resolveManagedGitHubCredential(deleted.db, deleted.secrets, "company-1", { agentId: "agent-a" }))
+      .resolves.toMatchObject({ error: REBIND });
+
+    const inactive = buildScenario({
+      grant: { kind: "agent", subjectAgentId: "agent-a" },
+      secret: { status: "revoked" },
+    });
+    await expect(resolveManagedGitHubCredential(inactive.db, inactive.secrets, "company-1", { agentId: "agent-a" }))
+      .resolves.toMatchObject({ error: REBIND });
+  });
+
+  it("refuses a lone grant whose user secret declaration is revoked", async () => {
+    const revoked = buildScenario({
+      grant: { kind: "agent", subjectAgentId: "agent-a" },
+      secret: { definitionStatus: "revoked" },
+    });
+    await expect(resolveManagedGitHubCredential(revoked.db, revoked.secrets, "company-1", { agentId: "agent-a" }))
+      .resolves.toMatchObject({ error: REBIND });
+    expect(revoked.resolveUserSecretValue).not.toHaveBeenCalled();
+  });
+
+  // Guards the fix against over-reach in both directions: readability must not be
+  // conflated with provider-metadata freshness (which would break the working
+  // dedicated grant), nor with the user-grant subject pin (which has its own,
+  // more accurate message and must keep reporting that instead of a rebind).
+  it("keeps lost repository access and the subject pin out of the rebind message", async () => {
+    // Zero install/repository counts are already rejected downstream on their own
+    // terms. The readability gate must not reach this case first and relabel it,
+    // because "rebind the credentials" would send an operator to replace a token
+    // that is fine -- the access behind it is what went away.
+    const stale = buildScenario({
+      grant: {
+        kind: "agent", subjectAgentId: "agent-a",
+        providerTenant: { github: { userId: "gh-1", login: "operator", installationCount: 0, repositoryCount: 0 } },
+      },
+    });
+    const staleResult = await resolveManagedGitHubCredential(stale.db, stale.secrets, "company-1", { agentId: "agent-a" });
+    expect(staleResult.error).toBe("The managed GitHub identity no longer has repository access");
+    expect(staleResult.error).not.toBe(REBIND);
+
+    // Same for a user grant pointing at someone else's secret: an invalid grant,
+    // reported as such by the resolution path rather than as a rebind.
+    const pinned = buildScenario({ grant: { kind: "user", subjectUserId: "someone-else" } });
+    const pinnedResult = await resolveManagedGitHubCredential(pinned.db, pinned.secrets, "company-1", {
+      responsibleUserId: "someone-else",
+    });
+    expect(pinnedResult.error).toBe("The personal GitHub credential is invalid");
+    expect(pinnedResult.error).not.toBe(REBIND);
+
+    // An OAuth vault grant declares no access-token secret ref: its token lives in
+    // `externalCredential` and is refreshed by the grant refresher. Judging it by
+    // company-secret readability would reject a working connection outright, which
+    // is what `tool-gateway-service`'s legacy-shared-policy case proves end to end.
+    const vaulted = buildScenario({
+      grant: { kind: "agent", subjectAgentId: "agent-a", credentialSecretRefs: [] },
+      secret: null,
+    });
+    const vaultedResult = await resolveManagedGitHubCredential(vaulted.db, vaulted.secrets, "company-1", {
+      agentId: "agent-a",
+    });
+    expect(vaultedResult.error).not.toBe(REBIND);
   });
 
   it("still reports an unexpected failure as temporary", async () => {

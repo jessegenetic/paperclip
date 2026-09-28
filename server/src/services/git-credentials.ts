@@ -380,7 +380,7 @@ export async function resolveManagedGitHubIdentitySelection(
   }
   const credentialIds = candidates.flatMap((grant) => grant.credentialSecretRefs
     .filter((ref) => ref.configPath === "oauth.access_token").map((ref) => ref.secretId));
-  const credentialRecords = candidates.length > 1 && credentialIds.length > 0
+  const credentialRecords = credentialIds.length > 0
     ? await db.select({
         id: companySecrets.id, status: companySecrets.status, deletedAt: companySecrets.deletedAt,
         scope: companySecrets.scope, ownerUserId: companySecrets.ownerUserId,
@@ -408,6 +408,27 @@ export async function resolveManagedGitHubIdentitySelection(
             && secret.definitionStatus === "active" && !secret.definitionDeletedAt
           : secret.scope === "company")));
   };
+  // Whether this grant's access token is *readable at all*: the secret exists, is
+  // live, and has a scope the resolution path supports. Deliberately narrower than
+  // `hasCredentialRecord` in two ways. It ignores provider-metadata freshness --
+  // stale install/repository counts rank rival grants, they are not evidence a
+  // token is unreadable, so gating a lone grant on them would fail closed on
+  // metadata. And it does not re-apply the user-grant subject pin, which is an
+  // authorization rule the resolution path already enforces with a more accurate
+  // message; duplicating it here would relabel an invalid grant as a rebind.
+  const credentialResolvable = (grant: typeof connectionGrants.$inferSelect) => {
+    const ref = grant.credentialSecretRefs.find((ref) => ref.configPath === "oauth.access_token");
+    // No declared access-token ref means this grant is not secret-backed at all --
+    // an OAuth vault grant carries its token in `externalCredential` and refreshes
+    // through the grant refresher. Readability of a company secret is not the right
+    // question for it, so leave that judgement to the path that owns it.
+    if (!ref) return true;
+    return credentialRecords.some((secret) => secret.id === ref.secretId
+      && secret.status === "active" && !secret.deletedAt
+      && (secret.scope === "user"
+        ? Boolean(secret.ownerUserId) && secret.definitionStatus === "active" && !secret.definitionDeletedAt
+        : secret.scope === "company"));
+  };
   const isAvailable = (grant: typeof connectionGrants.$inferSelect) =>
     grant.status === "active" && hasCredentialRecord(grant) && githubConnections.some((connection) =>
       connection.id === grant.connectionId && connection.enabled && connection.status === "active",
@@ -431,6 +452,19 @@ export async function resolveManagedGitHubIdentitySelection(
     return { configured: true, identitySource, error: "The managed GitHub connection is unavailable" };
   }
   if (grant.status !== "active") return { configured: true, identitySource, error: "The managed GitHub identity must be reconnected" };
+  // Selection used to promise a credential it had never checked: the secret
+  // records were fetched only to disambiguate rival grants, so a lone grant was
+  // assumed readable. Everything downstream trusts this answer -- agent-facing
+  // readiness reports the connection `ready` from the selected grant alone -- so
+  // an unreadable token surfaced as a connection that claimed to work and then
+  // returned no credentials, with no actionable reason anywhere. Fail here, once,
+  // where both the readiness and the credential-export paths observe it.
+  if (!credentialResolvable(grant)) {
+    return {
+      configured: true, identitySource,
+      error: "The managed GitHub identity's access token cannot be read; rebind the connection's credentials",
+    };
+  }
   return { configured: true, identitySource, grant };
 }
 

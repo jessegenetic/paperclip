@@ -844,5 +844,64 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     expect((await service.search(aiClaims, "openrouter")).results.some(result => result.service === "openrouter")).toBe(false);
   });
 
+  // Agent-facing readiness and the credential broker resolve the same GitHub
+  // identity, but readiness used to stop at "a grant was selected". A grant whose
+  // access token cannot be read still selected, so the same connection reported
+  // `ready` here while the broker handed back an empty environment -- and because
+  // `request` gates on this identical check, the agent could not raise a setup
+  // card either. Readiness must fail with the credential, not with the grant.
+  it("reports an unreadable GitHub credential as actionable instead of ready", async () => {
+    const companyId = claims.company_id;
+    const agentId = randomUUID();
+    const issueId = randomUUID();
+    const runIdForGithub = randomUUID();
+    await db.insert(agents).values({ id: agentId, companyId, name: "GitHub Agent", role: "engineer", status: "active", adapterType: "claude_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
+    await db.insert(issues).values({ id: issueId, companyId, title: "Push a branch", status: "in_progress", priority: "medium", assigneeAgentId: agentId });
+    await db.insert(heartbeatRuns).values({ id: runIdForGithub, companyId, agentId, status: "running", responsibleUserId: claims.responsible_user_id, contextSnapshot: { issueId } });
+    const githubClaims: RuntimeToolsTokenClaims = { ...claims, sub: agentId, run_id: runIdForGithub };
+
+    const [application] = await db.insert(toolApplications).values({
+      companyId, applicationKey: `github-${randomUUID()}`, name: "GitHub", type: "mcp_http",
+      status: "active", metadata: { sourceTemplateKey: "github" },
+    }).returning();
+    const [connection] = await db.insert(toolConnections).values({
+      companyId, applicationId: application!.id, name: "Operator's GitHub", uid: `github/${randomUUID()}`,
+      transport: "mcp_remote", authKind: "oauth", credentialPolicy: "per_agent", status: "active",
+      enabled: true, healthStatus: "ok",
+      config: { sourceTemplateKey: "github" }, transportConfig: { sourceTemplateKey: "github" },
+    }).returning();
+    await db.insert(toolConnectionInstalls).values({ companyId, connectionId: connection!.id, targetType: "agent", targetId: agentId });
+    const [profile] = await db.insert(toolProfiles).values({ companyId, name: "GitHub reads", profileKey: `github-reads-${randomUUID()}`, defaultAction: "allow", status: "active" }).returning();
+    await db.insert(toolProfileBindings).values({ companyId, profileId: profile!.id, targetType: "agent", targetId: agentId });
+    await db.insert(toolCatalogEntries).values({ companyId, connectionId: connection!.id, toolName: "get-me", name: "get-me", versionHash: "fixture-v1", status: "active", entryKind: "tool" });
+
+    // The grant itself is healthy and unambiguous: active, dedicated to this
+    // agent, with live provider metadata. Only the secret behind it is gone, so
+    // nothing but the credential check can distinguish this from a usable identity.
+    const [secret] = await db.insert(companySecrets).values({
+      companyId, scope: "company", key: `github-token-${randomUUID()}`, name: "GitHub token",
+      status: "active", deletedAt: new Date("2026-09-28T00:00:00Z"),
+    }).returning();
+    await db.insert(connectionGrants).values({
+      companyId, connectionId: connection!.id, kind: "agent", subjectAgentId: agentId, status: "active",
+      providerTenant: { github: {
+        userId: "gh-1", login: "operator", installationCount: 1, repositoryCount: 4,
+        repositorySelection: "all", installationIds: ["1"], installationOwnerLogins: ["operator"],
+      } },
+      credentialSecretRefs: [{ secretId: secret!.id, configPath: "oauth.access_token" }],
+    });
+
+    const service = connectionIntentService(db);
+    const search = await service.search(githubClaims, "github");
+    const github = search.results.find((result) => result.service === "github");
+    expect(github).toMatchObject({ state: "needs_user_action", connectionId: null });
+    expect(github?.reason).not.toBe("Connection is installed and usable by this agent");
+
+    // The escalation path has to reopen with it. Reporting `ready` here is what
+    // left an agent with a broken credential and no way to ask for a repair.
+    const request = await service.request(githubClaims, "github");
+    expect(request.state).toBe("needs_user_action");
+    expect(request.interactionId).not.toBeNull();
+  });
 
 });
