@@ -22219,6 +22219,7 @@ export function heartbeatService(
       }
       const dispatchResolvedInteractionContinuationWithAtomicGate = async <T>(
         dispatch: (markDispatchStarted: () => void) => Promise<T>,
+        selectedRuntimeMode: "legacy" | "native" = "legacy",
       ): Promise<
         { dispatched: true; resultPromise: Promise<T> } | { dispatched: false }
       > => {
@@ -22240,7 +22241,10 @@ export function heartbeatService(
         // Native restart/reattachment has separate ownership semantics and
         // requires integration at its provider-turn boundary, not this legacy gate.
         const reserveLegacyDispatch = async () => {
-          if (run.runtimeMode === "native") return true;
+          // Fresh native selection changes the persisted row after `run` was
+          // loaded. Use the trusted resolver decision at this call site, not
+          // that stale pre-selection snapshot.
+          if (selectedRuntimeMode === "native") return true;
           await options.beforeProviderAdmissionCheck?.(run.id);
           const admission = await providerAdmission.reserve(run.companyId, run.id, new Date(), {
             legacyDispatchOwner: legacyControllerBootId,
@@ -24202,6 +24206,7 @@ export function heartbeatService(
                       await persistRunProcessMetadata(run.id, meta);
                     },
                   }),
+                "native",
               );
             if (!guardedDispatch.dispatched) return;
             nativeDispatchStarted = true;

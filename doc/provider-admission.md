@@ -3,7 +3,11 @@
 The draft includes a database-backed admission service, queued-run preflight,
 a scheduler promotion floor, and final legacy adapter admission. Legacy results
 persist shared provider cooldowns before terminal publication or issue release.
-Native provider-turn admission and settlement are still unfinished. Do not adopt
+Native provider-turn admission and settlement are still unfinished.
+The shared dispatch wrapper uses the selected runtime mode, because a fresh
+native selection changes the database row after the initial run snapshot was
+loaded. The legacy controller check must not suppress this native handoff.
+Queued preflight still defers fresh native wakes during a known shared cooldown. Do not adopt
 this draft as a complete burn-control fix.
 
 ## Admission contract
@@ -125,3 +129,19 @@ ranges are not independently verified by these receipts.
 - Add bounded delta context and measure complete rendered prompt bytes/chars;
   report token counts only when measured with the actual tokenizer or provider.
 - Add runtime path regressions and independent review before adoption approval.
+
+## Native integration boundary found during regression review
+
+The current receipt key is one run. Native execution can resume the same run,
+reattach an active turn, or start a new turn on a retained session. These are not
+equivalent dispatches. Before wiring native entry, define durable attempt/turn
+identity so a reattachment does not spend another slot and a new turn cannot
+reuse an old reservation. Do not allow `duplicate` receipts to authorize replay.
+
+`native-session-executor.ts` claims its coordinator before calling the runner's
+`onSessionAdmission` hook. That hook runs before both fresh sessions and retained
+session attachment. It is not by itself evidence of a new provider turn. Native
+coordinator claims use coordinator-before-run locking; admission must preserve
+that order beneath the shared pool lock. Failure persistence must occur before
+the native executor publishes retryable/terminal state, including exceptions
+which never return an adapter result. Known reset parsing must retain its floor.
