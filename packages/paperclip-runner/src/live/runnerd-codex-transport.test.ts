@@ -684,6 +684,55 @@ it("refuses a reusable close checkpoint when the local provider snapshot is unre
   }
 }, 15_000);
 
+it("gives a repeat close its own failure instead of the first caller's rejection", async () => {
+  const stateDirectory = await mkdtemp(
+    join(tmpdir(), "runnerd-close-replay-"),
+  );
+  const checkpoint = vi.fn();
+  const bundle = createCapabilityRunnerdCodexTransport({
+    runnerBinary: defaultCapabilityRunnerdBinary(),
+    codexCommand: fakeCodex,
+    codexArgs: fakeCodexArgs(stateDirectory),
+    stateDirectory,
+    closeGraceMs: 3_000,
+    controlPlaneRegistration: async (authority) => {
+      await authority.start();
+      return { checkpoint, release: () => undefined };
+    },
+  });
+  try {
+    await bundle.transport.request("thread/start", { cwd: tmpdir() });
+    const providerPath = join(
+      stateDirectory,
+      "runner",
+      "codex-provider-state.json",
+    );
+    await rename(providerPath, `${providerPath}.preserved`);
+    await mkdir(providerPath);
+    const first = await bundle.transport
+      .close()
+      .catch((error: unknown) => error);
+    expect(first).toBeInstanceOf(NativeSessionCloseUnrecoverableError);
+    const checkpointCalls = checkpoint.mock.calls.length;
+    // The transport stays unsafe, so a repeat close still rejects and the
+    // runtime still quarantines its cleanup. What it must not do is hand this
+    // caller the first caller's rejection object: that stack belongs to a
+    // teardown this caller never performed, and re-throwing it from a
+    // `finally` or a finalizer replaces whatever failure was in flight.
+    const second = await bundle.transport
+      .close("late run teardown")
+      .catch((error: unknown) => error);
+    expect(second).toBeInstanceOf(NativeSessionCloseUnrecoverableError);
+    expect(second).not.toBe(first);
+    expect((second as Error).cause).toBe(first);
+    // The close body itself still runs exactly once.
+    expect(checkpoint.mock.calls.length).toBe(checkpointCalls);
+  } finally {
+    await bundle.transport.close().catch(() => undefined);
+    await rm(stateDirectory, { recursive: true, force: true });
+  }
+}, 15_000);
+
 it.each(["after_budget", "within_budget", "persistence_failure"] as const)(
   "fences reusable suspension against late semantic completion (%s)",
   async (mode) => {
@@ -3532,7 +3581,15 @@ it("does not retry a real memoized transport close whose suspension proof is una
     expect(failure).toMatchObject({
       code: "native_session_close_unrecoverable",
     });
-    expect(bundle.transport.close()).toBe(failedClose);
+    // A repeat close still reports the transport unsafe and still does not
+    // re-run the close, but it raises an error of its own rather than
+    // replaying the first caller's rejection object.
+    const replayed = await bundle.transport
+      .close()
+      .catch((error: unknown) => error);
+    expect(replayed).toBeInstanceOf(NativeSessionCloseUnrecoverableError);
+    expect(replayed).not.toBe(failure);
+    expect((replayed as Error).cause).toBe(failure);
 
     vi.useFakeTimers();
     const close = vi.fn(({ reason }: { reason: string }) =>
@@ -3609,7 +3666,9 @@ it("does not retry a real memoized transport close whose suspension proof is una
         controlPlaneInstanceId: "control-recovery",
         requireSessionCloseBeforeReturn: true,
       });
-    await expect(execute()).rejects.toBe(failure);
+    await expect(execute()).rejects.toMatchObject({
+      code: "native_session_close_unrecoverable",
+    });
     const readsAfterClose = readRunnerState.mock.calls.length;
     await expect(execute()).rejects.toMatchObject({
       code: "native_session_cleanup_quarantined",
@@ -7327,8 +7386,23 @@ it("preserves prepared input through runnerd and the real OpenCode proxy boundar
     const requests = (await readFile(join(runtime, sessionRoots[0]!.name, "data/fake-prompt-requests.ndjson"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
     expect(requests.map((request) => request.parts)).toEqual([[{ type: "text", text: prepared }]]);
   } finally {
-    await session?.close();
-    await bundle.transport.close();
+    // Neither teardown call may speak for the test. Both of these reach
+    // `#closeOnce`, which throws `NativeSessionCloseUnrecoverableError`
+    // whenever `suspensionRequired && !runnerSettled` -- a condition that is
+    // *expected* once the body has already failed, because a body that never
+    // reached a settled provider can never have durably suspended one. Letting
+    // either throw from `finally` replaces the real failure with that
+    // teardown assertion, and that is exactly why job 109240036424 reported
+    // only `provider_transport_failed: runner did not durably suspend before
+    // checkpoint` at `#closeOnce` with no provider detail and no stderr.
+    await session?.close().catch(() => undefined);
+    await bundle.transport.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
   }
-}, 30_000);
+  // The budget must outlast the transport's own startup supervision
+  // (`run.prepare` 30s + `session.open` 45s + provider identity). At 30s a
+  // loaded host reports a bare "Test timed out" before that supervision can
+  // produce its diagnostic. This is a load-resilience fix, not the reason the
+  // hosted log was opaque -- the hosted run failed in 1238ms, nowhere near any
+  // budget. The two faults are independent and both had to be fixed.
+}, 180_000);
