@@ -849,15 +849,22 @@ describe("agent issue mutation checkout ownership", () => {
           .attach("file", Buffer.from("report"), { filename: "report.txt", contentType: "text/plain" }),
     ],
     ["attachment delete", (app: express.Express) => request(app).delete("/api/attachments/attachment-1")],
-  ])("rejects peer agent %s on another agent's active checkout", async (_name, sendRequest) => {
+  ])("rejects peer agent %s on another agent's in-progress task", async (_name, sendRequest) => {
+    // Note the fixture: `makeIssue` sets `checkoutRunId: null` and only
+    // `status: "in_progress"`. This suite has always exercised the guard with
+    // no checkout at all, which is precisely why the copy must not claim one.
     const res = await sendRequest(await createApp(peerActor()));
 
     expect(res.status, JSON.stringify(res.body)).toBe(409);
-    // Plan §6: the run lock names the boundary and routes to the open channel.
+    // Plan §6: the lock names the boundary and routes to the open channel.
     expect(res.body.details.code).toBe("issue_write_assignee_run_lock");
-    expect(res.body.details.boundary).toBe("Run checkout lock");
+    expect(res.body.details.boundary).toBe("Assignee lock on an in-progress task");
     expect(res.body.error).toContain("Who can act:");
     expect(res.body.error).toContain("Comment instead");
+    // The denial is reached with `checkoutRunId: null`, so it must not assert a
+    // live checkout or run to the agent reading it.
+    expect(res.body.error).not.toMatch(/checked out/i);
+    expect(res.body.error).not.toMatch(/a run is live/i);
     expect(mockIssueService.assertCheckoutOwner).not.toHaveBeenCalled();
     expect(mockIssueService.update).not.toHaveBeenCalled();
     expect(mockIssueService.addComment).not.toHaveBeenCalled();

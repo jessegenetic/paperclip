@@ -38,8 +38,15 @@ export type IssueWriteDenialCode = (typeof ISSUE_WRITE_DENIAL_CODES)[number];
 
 /**
  * Why the write stopped, which drives icon + colour. `boundary` is an
- * authorization wall, `lock` is run-lifecycle machinery that will clear on its
- * own, `cap` is a rate backstop, and `attribution` is a rejected spoof.
+ * authorization wall, `lock` is task-ownership machinery that clears when the
+ * assignment or status changes, `cap` is a rate backstop, and `attribution` is
+ * a rejected spoof.
+ *
+ * `lock` does *not* promise self-healing. The only `lock` code is
+ * `issue_write_assignee_run_lock`, whose predicate is "assigned to someone else
+ * and still `in_progress`" — and `in_progress` is left by the assignee or by
+ * the board. An assignee that cannot run (provider quota, retries exhausted)
+ * never leaves it, so the copy must route to a write someone can actually make.
  */
 export type IssueWriteDenialTone = "boundary" | "lock" | "cap" | "attribution";
 
@@ -208,17 +215,23 @@ export function describeIssueWriteDenial(
         code,
         status: 409,
         tone: "lock",
-        boundary: "Run checkout lock",
-        title: "Another agent's run owns this task",
+        boundary: "Assignee lock on an in-progress task",
+        title: "This task is assigned to another agent and still in progress",
         description:
-          `${assignee} has ${issue} checked out and a run is live. Checkout and run ` +
-          `ownership stay assignee-scoped even though writes are open, so field edits ` +
-          `belong to the run that holds the lock until it finishes.`,
+          `${issue} is assigned to ${assignee} and its status is \`in_progress\`. That pair ` +
+          `is the whole test: the guard reads no checkout row, no run row, and no live-run ` +
+          `list, so this is not evidence that a run is currently holding ${issue}. Field ` +
+          `edits stay with the assignee until the status leaves \`in_progress\` or the ` +
+          `assignment changes.`,
         whoCanAct:
-          `${assignee}'s live run, or an agent holding the manage-active-checkouts permission.`,
+          `${assignee}, a board member, or an agent holding the manage-active-checkouts ` +
+          `permission.`,
         sanctionedPath:
-          `Comment instead of patching — comments stay open and wake ${assignee} — or ` +
-          `wait for the run to release the lock and retry.`,
+          `Comment instead of patching — comments stay open and wake ${assignee}. If ` +
+          `${assignee} cannot run, this does not clear on its own: ask the board to reassign ` +
+          `the task, move it out of \`in_progress\`, or call force-release with ` +
+          `\`clearAssignee=true\`. Plain force-release only clears checkout and run ids, ` +
+          `which this guard never reads, so it will not lift this denial.`,
       };
 
     case "cross_issue_influence_cap_exceeded": {

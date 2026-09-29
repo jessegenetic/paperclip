@@ -5345,8 +5345,21 @@ export function issueRoutes(
         return true;
       }
       if (issue.status === "in_progress") {
-        // Run/checkout ownership stays assignee-scoped even though writes are
-        // open, so this lock clears on its own — the copy routes to comments.
+        // Ownership of an in-progress task stays assignee-scoped even though
+        // writes are open. Note what this branch does *not* do: it reads no
+        // checkout row, no run row, and no live-run list — the predicate is
+        // exactly `assignee !== actor && status === "in_progress"`. It is a
+        // conservative stand-in for "a run may be working this", deliberately
+        // erring toward denial so a peer cannot clobber fields in the gap
+        // between the assignee's heartbeats.
+        //
+        // It therefore does NOT clear on its own when the assignee is dead:
+        // `in_progress` is left by the assignee or by the board, so an assignee
+        // out of provider quota or past its retry budget holds this forever.
+        // The denial copy must keep naming the writes that actually clear it
+        // (board reassign, board status change, force-release with
+        // `clearAssignee=true`, or the manage-active-checkouts grant) — a plain
+        // force-release clears only checkout/run ids this branch never reads.
         return denyIssueWrite(
           req,
           res,

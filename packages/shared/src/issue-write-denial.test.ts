@@ -107,6 +107,69 @@ describe("describeIssueWriteDenial", () => {
     expect(copy.sanctionedPath).toContain("CodexCoder");
   });
 
+  // The guard at `routes/issues.ts` (`assertAgentIssueMutationAllowed`) denies on
+  // exactly `assignee !== actor && status === "in_progress"`. It reads no
+  // checkout row, no run row, and no live-run list. Copy that asserts a live
+  // checkout sends the reader to `force-release`, which clears only the fields
+  // the predicate never consults — a real incident spent ~35 minutes and one
+  // board action that way before the reassignment 409'd identically.
+  it("describes the run lock's actual predicate instead of asserting a live checkout", () => {
+    const copy = describeIssueWriteDenial("issue_write_assignee_run_lock", {
+      assigneeLabel: "Lolo CEO",
+      issueIdentifier: "LOL-55",
+    });
+
+    expect(copy.description).toContain("LOL-55");
+    expect(copy.description).toContain("in_progress");
+    // Both of these were asserted by the old copy from a status field that
+    // implies neither.
+    expect(copy.description).not.toMatch(/checked out/i);
+    expect(copy.description).not.toMatch(/a run is live/i);
+    // The boundary label is what the UI renders as the headline noun phrase, so
+    // it must not name a checkout either.
+    expect(copy.boundary).not.toMatch(/checkout/i);
+  });
+
+  it("names writes that clear the run lock and never promises it self-heals", () => {
+    const copy = describeIssueWriteDenial("issue_write_assignee_run_lock", {
+      assigneeLabel: "Lolo CEO",
+    });
+
+    // `in_progress` is left by the assignee or by the board. An assignee out of
+    // provider quota never leaves it, so "wait for the run to release the lock"
+    // is advice no one can take.
+    expect(copy.sanctionedPath).not.toMatch(/wait for the run/i);
+    expect(copy.sanctionedPath).toMatch(/does not clear on its own/i);
+
+    // The four writes that actually reach past the predicate.
+    expect(copy.sanctionedPath).toContain("reassign");
+    expect(copy.sanctionedPath).toContain("in_progress");
+    expect(copy.sanctionedPath).toContain("clearAssignee=true");
+    expect(copy.whoCanAct).toContain("manage-active-checkouts");
+    expect(copy.whoCanAct).toContain("board");
+
+    // Naming the write that looks right but is not: plain force-release clears
+    // `checkoutRunId`/`executionRunId` and touches neither status nor assignee.
+    expect(copy.sanctionedPath).toMatch(/plain force-release/i);
+  });
+
+  it("keeps the flattened API message carrying the predicate and the remedy", () => {
+    // Agents typically surface only `error`, so the corrected facts have to
+    // survive the flattening that `issueWriteDenialApiMessage` performs.
+    const { status, body } = issueWriteDenialResponse(
+      "issue_write_assignee_run_lock",
+      { assigneeLabel: "Lolo CEO", issueIdentifier: "LOL-55" },
+    );
+
+    expect(status).toBe(409);
+    expect(body.error).toContain("in_progress");
+    expect(body.error).not.toMatch(/checked out/i);
+    expect(body.error).not.toMatch(/a run is live/i);
+    expect(body.error).toContain("clearAssignee=true");
+    expect(body.details.sanctionedPath).toContain("clearAssignee=true");
+    expect(body.details.boundary).not.toMatch(/checkout/i);
+  });
+
   it("reuses responsible-user ceiling copy and keeps on-behalf-of terminology", () => {
     const ceiling = describeIssueWriteDenial("issue_write_responsible_user_ceiling", {
       responsibleUserName: "Dotta",
