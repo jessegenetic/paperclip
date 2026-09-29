@@ -230,6 +230,64 @@ describe("isCodexTransientUpstreamError", () => {
     );
   });
 
+  // LOL-234: the live codex_local quota outage of 2026-09-29. The reset was
+  // 109h out, so Codex interposed a date the clock-only parser could not read
+  // and the deadline was silently replaced by a 1h default backoff.
+  it("reads a multi-day reset from the verbatim Codex usage-limit message", () => {
+    const errorMessage = [
+      "ERROR: You’ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage",
+      "       to purchase more credits or try again at Oct 3rd, 2026 10:00 AM.",
+    ].join("\n");
+    const now = new Date(2026, 8, 29, 4, 55, 0);
+
+    expect(isCodexProviderQuotaError({ errorMessage })).toBe(true);
+    const retryAt = extractCodexRetryNotBefore({ errorMessage }, now);
+    expect(retryAt?.getTime()).toBe(new Date(2026, 9, 3, 10, 0, 0, 0).getTime());
+    // The whole point: a deadline beyond the parser's former ~24h ceiling.
+    expect((retryAt!.getTime() - now.getTime()) / 3_600_000).toBeGreaterThan(24);
+  });
+
+  it("resolves a dated reset against an explicit timezone hint", () => {
+    const errorMessage =
+      "You've hit your usage limit. Try again at Oct 3rd, 2026 10:00 AM (America/Chicago).";
+
+    expect(
+      extractCodexRetryNotBefore({ errorMessage }, new Date("2026-09-29T04:55:00.000Z"))?.toISOString(),
+    ).toBe("2026-10-03T15:00:00.000Z");
+  });
+
+  it("rolls a dateless reset forward a year when it already passed", () => {
+    const errorMessage = "You've hit your usage limit. Try again at Jan 4th 9:00 AM.";
+
+    expect(
+      extractCodexRetryNotBefore({ errorMessage }, new Date(2026, 8, 29, 4, 55, 0))?.getTime(),
+    ).toBe(new Date(2027, 0, 4, 9, 0, 0, 0).getTime());
+  });
+
+  it("keeps the bare-clock reset path working alongside the dated form", () => {
+    const errorMessage = "You've hit your usage limit. Try again at 2:30am.";
+
+    expect(
+      extractCodexRetryNotBefore({ errorMessage }, new Date(2026, 8, 29, 4, 55, 0))?.getTime(),
+    ).toBe(new Date(2026, 8, 30, 2, 30, 0, 0).getTime());
+  });
+
+  it("does not read a reset clock out of a non-month leading word", () => {
+    expect(
+      extractCodexRetryNotBefore({
+        errorMessage: "You've hit your usage limit. Try again at sometime 10 soon.",
+      }),
+    ).toBeNull();
+  });
+
+  it("still reports no reset time when the quota message carries no clock", () => {
+    expect(
+      extractCodexRetryNotBefore({
+        errorMessage: "You've hit your usage limit. Visit https://example.invalid/usage for details.",
+      }),
+    ).toBeNull();
+  });
+
   it("does not classify deterministic compaction errors as transient", () => {
     expect(
       isCodexTransientUpstreamError({

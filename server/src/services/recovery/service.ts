@@ -233,6 +233,11 @@ export type StrandedRecoveryCause =
   | "deliberate_wait_without_target"
   | "process_lost"
   | "provider_quota"
+  // A `provider_quota` wait is owned by the system monitor, so it never reaches
+  // the board. When that wait stops being a wait — the reset is days out, or the
+  // monitor has come due its full budget of times without dispatching — the
+  // issue needs the ordinary board route instead of another silent hour.
+  | "provider_quota_recovery_exhausted"
   | "codex_output_inactivity_monitor"
   | "workspace_validation_failed"
   | "configuration_incomplete"
@@ -299,6 +304,8 @@ function recoveryCauseTitle(cause: StrandedRecoveryCause) {
       return "reviewer recovery failed";
     case "provider_quota":
       return "provider quota unavailable";
+    case "provider_quota_recovery_exhausted":
+      return "provider quota recovery exhausted";
     case SUCCESSFUL_RUN_MISSING_STATE_REASON:
       return "missing disposition recovery failed";
     default:
@@ -517,6 +524,19 @@ const CONTINUATION_RECOVERY_TRANSIENT_MAX_ATTEMPTS = 3;
 const CONTINUATION_RECOVERY_DEFAULT_MAX_ATTEMPTS = 1;
 const CONTINUATION_RECOVERY_TRANSIENT_BASE_BACKOFF_MS = 60_000;
 export const PROVIDER_QUOTA_RECOVERY_DEFAULT_BACKOFF_MS = 60 * 60 * 1000;
+/** Records whether a persisted `retryNotBefore` is the provider's or our fallback. */
+export const PROVIDER_QUOTA_RESET_PARSED_KEY = "providerQuotaResetTimeParsed";
+/**
+ * A reset further out than this is a multi-day outage, not something to sleep
+ * through one silent hour at a time. Surface it to the board instead.
+ */
+export const PROVIDER_QUOTA_RECOVERY_MAX_MONITOR_HORIZON_MS = 12 * 60 * 60 * 1000;
+/**
+ * How many times the quota monitor may come due and be re-armed before the
+ * issue is escalated. Bounds the re-arm loop that `maxAttempts: null` allowed
+ * to run forever.
+ */
+export const PROVIDER_QUOTA_RECOVERY_MONITOR_MAX_ATTEMPTS = 6;
 
 const PROVIDER_QUOTA_ERROR_RE =
   /(?:you(?:'|’)ve hit your (?:\w+ )?limit|usage limit(?: reached| exceeded)?|provider quota|quota (?:limit )?exceeded|model (?:is )?at capacity)/i;
@@ -528,15 +548,37 @@ export type AdapterFailureRecoveryClassification =
   | { kind: "configuration_incomplete" }
   | null;
 
-function parseProviderQuotaClockReset(error: string, now: Date) {
-  const match = error.match(
-    /(?:try again at|resets?(?:\s+at)?)\s+(\d{1,2})(?::(\d{2}))?\s*(?:([ap])\.?\s*m\.?)?(?:\s*\(([^)]+)\)|\s+([A-Z]{2,5}))?/i,
-  );
-  if (!match) return null;
+const PROVIDER_QUOTA_MONTH_PREFIXES = [
+  "jan", "feb", "mar", "apr", "may", "jun",
+  "jul", "aug", "sep", "oct", "nov", "dec",
+] as const;
 
-  const hourValue = Number.parseInt(match[1] ?? "", 10);
-  const minute = Number.parseInt(match[2] ?? "0", 10);
-  const meridiem = (match[3] ?? "").toLowerCase();
+// A bare clock can only ever express a reset inside ~24h. Once the window is
+// longer the provider interposes a date — `try again at Oct 3rd, 2026 10:00 AM`
+// — so accept that form too and let the deadline land days out.
+const PROVIDER_QUOTA_CLOCK_RESET_RE =
+  /(?:try again at|resets?(?:\s+at)?)\s+(?:(?<month>[a-z]{3,9})\.?\s+(?<day>\d{1,2})(?:st|nd|rd|th)?\s*,?\s*(?<year>\d{4})?[\s,]+)?(?<hour>\d{1,2})(?::(?<minute>\d{2}))?\s*(?:(?<meridiem>[ap])\.?\s*m\.?)?(?:\s*\((?<tzParen>[^)]+)\)|\s+(?<tzBare>[A-Z]{2,5}))?/i;
+
+function parseProviderQuotaClockReset(error: string, now: Date) {
+  const groups = error.match(PROVIDER_QUOTA_CLOCK_RESET_RE)?.groups;
+  if (!groups) return null;
+
+  const monthName = groups.month?.toLowerCase();
+  const monthIndex = monthName
+    ? PROVIDER_QUOTA_MONTH_PREFIXES.findIndex((prefix) =>
+        monthName.startsWith(prefix),
+      )
+    : -1;
+  // A leading word that is not a month means this is not a reset clock at all.
+  if (monthName && monthIndex < 0) return null;
+  const day = groups.day ? Number.parseInt(groups.day, 10) : null;
+  if (day !== null && (!Number.isInteger(day) || day < 1 || day > 31))
+    return null;
+  const year = groups.year ? Number.parseInt(groups.year, 10) : null;
+
+  const hourValue = Number.parseInt(groups.hour ?? "", 10);
+  const minute = Number.parseInt(groups.minute ?? "0", 10);
+  const meridiem = (groups.meridiem ?? "").toLowerCase();
   if (!Number.isInteger(hourValue)) return null;
   if (
     meridiem ? hourValue < 1 || hourValue > 12 : hourValue < 0 || hourValue > 23
@@ -546,8 +588,29 @@ function parseProviderQuotaClockReset(error: string, now: Date) {
 
   let hour = meridiem ? hourValue % 12 : hourValue;
   if (meridiem === "p") hour += 12;
-  const timeZone = (match[4] ?? match[5])?.trim();
+  const explicitDate =
+    monthIndex >= 0 && day !== null ? { monthIndex, day, year } : null;
+  const timeZone = (groups.tzParen ?? groups.tzBare)?.trim();
   if (!timeZone) {
+    if (explicitDate) {
+      const at = (resolvedYear: number) => {
+        const candidate = new Date(now);
+        candidate.setUTCFullYear(
+          resolvedYear,
+          explicitDate.monthIndex,
+          explicitDate.day,
+        );
+        candidate.setUTCHours(hour, minute, 0, 0);
+        return candidate;
+      };
+      const resolvedYear = explicitDate.year ?? now.getUTCFullYear();
+      const retryAt = at(resolvedYear);
+      // An explicit year is authoritative. Without one, a date already behind
+      // us means the provider meant next year's occurrence.
+      return explicitDate.year === null && retryAt.getTime() <= now.getTime()
+        ? at(resolvedYear + 1)
+        : retryAt;
+    }
     const retryAt = new Date(now);
     retryAt.setUTCHours(hour, minute, 0, 0);
     if (retryAt.getTime() <= now.getTime())
@@ -571,18 +634,16 @@ function parseProviderQuotaClockReset(error: string, now: Date) {
           .map((part) => [part.type, part.value]),
       );
     const nowParts = wallClock(now);
-    const buildRetryAt = (dayOffset: number) => {
-      const targetDay = new Date(
-        Date.UTC(
-          Number(nowParts.year),
-          Number(nowParts.month) - 1,
-          Number(nowParts.day) + dayOffset,
-          hour,
-          minute,
-        ),
+    const buildRetryAt = (
+      targetYear: number,
+      targetMonthIndex: number,
+      targetDay: number,
+    ) => {
+      const target = new Date(
+        Date.UTC(targetYear, targetMonthIndex, targetDay, hour, minute),
       );
-      let candidate = targetDay;
-      const targetMs = targetDay.getTime();
+      let candidate = target;
+      const targetMs = target.getTime();
       for (let attempt = 0; attempt < 4; attempt += 1) {
         const actual = wallClock(candidate);
         const actualMs = Date.UTC(
@@ -598,8 +659,28 @@ function parseProviderQuotaClockReset(error: string, now: Date) {
       }
       return candidate;
     };
-    const sameDay = buildRetryAt(0);
-    return sameDay.getTime() > now.getTime() ? sameDay : buildRetryAt(1);
+    if (explicitDate) {
+      const resolvedYear = explicitDate.year ?? Number(nowParts.year);
+      const retryAt = buildRetryAt(
+        resolvedYear,
+        explicitDate.monthIndex,
+        explicitDate.day,
+      );
+      return explicitDate.year === null && retryAt.getTime() <= now.getTime()
+        ? buildRetryAt(
+            resolvedYear + 1,
+            explicitDate.monthIndex,
+            explicitDate.day,
+          )
+        : retryAt;
+    }
+    const nowYear = Number(nowParts.year);
+    const nowMonthIndex = Number(nowParts.month) - 1;
+    const nowDay = Number(nowParts.day);
+    const sameDay = buildRetryAt(nowYear, nowMonthIndex, nowDay);
+    return sameDay.getTime() > now.getTime()
+      ? sameDay
+      : buildRetryAt(nowYear, nowMonthIndex, nowDay + 1);
   } catch {
     return null;
   }
@@ -657,7 +738,13 @@ export function classifyAdapterFailureForRecovery(
     return {
       kind: "provider_quota",
       retryAt: parsedPersistedRetryAt,
-      parsedResetTime: true,
+      // This service writes its own fallback deadline back into
+      // `retryNotBefore`, so re-reading a run cannot tell a provider-supplied
+      // reset from one we invented unless the provenance was recorded. Absent
+      // the marker the value came from the adapter, which only ever persists a
+      // real provider reset.
+      parsedResetTime:
+        resultJson[PROVIDER_QUOTA_RESET_PARSED_KEY] !== false,
     };
   }
 
@@ -2493,6 +2580,8 @@ export function recoveryService(
             ? "Board operator: inspect the retry history, then explicitly retry the original owner, reassign, or intentionally resolve the task."
             : recoveryCause === "provider_quota"
               ? "Wait for provider quota recovery, then retry the original assignee; do not wake a takeover owner."
+              : recoveryCause === "provider_quota_recovery_exhausted"
+                ? "Board operator: the provider quota wait can no longer be resolved by waiting; inspect the reset deadline, restore provider capacity or switch the agent's adapter, then explicitly retry the original owner or reassign."
               : recoveryCause === "codex_output_inactivity_monitor"
                 ? "Board operator: inspect the inactivity evidence, then explicitly retry the original owner, reassign, or intentionally resolve the task."
                 : recoveryCause === "workspace_validation_failed"
@@ -4011,6 +4100,7 @@ export function recoveryService(
             retryNotBefore: classification.retryAt.toISOString(),
             transientRetryNotBefore: classification.retryAt.toISOString(),
             providerQuotaRetryNotBefore: classification.retryAt.toISOString(),
+            [PROVIDER_QUOTA_RESET_PARSED_KEY]: classification.parsedResetTime,
           }
         : { errorFamily: "configuration_incomplete" };
     const errorCode = classification.kind;
@@ -4026,6 +4116,27 @@ export function recoveryService(
     };
   }
 
+  /**
+   * How many times this issue's quota monitor has already come due. The column
+   * is written by the monitor trigger; the execution-state copy can be behind it
+   * when a sweep re-armed from a pre-trigger snapshot, so take the higher one.
+   */
+  function readProviderQuotaMonitorAttemptCount(
+    issue: typeof issues.$inferSelect,
+  ) {
+    const stateAttemptCount = parseIssueExecutionState(issue.executionState)
+      ?.monitor?.attemptCount;
+    return Math.max(
+      issue.monitorAttemptCount ?? 0,
+      typeof stateAttemptCount === "number" ? stateAttemptCount : 0,
+    );
+  }
+
+  type ProviderQuotaMonitorOutcome =
+    | { kind: "monitored"; issue: typeof issues.$inferSelect }
+    | { kind: "escalate"; reason: "attempts_exhausted" | "reset_beyond_horizon" }
+    | { kind: "skipped" };
+
   async function scheduleProviderQuotaRecoveryMonitor(input: {
     issue: typeof issues.$inferSelect;
     latestRun: NonNullable<LatestIssueRun>;
@@ -4033,22 +4144,50 @@ export function recoveryService(
       NonNullable<AdapterFailureRecoveryClassification>,
       { kind: "provider_quota" }
     >;
-  }) {
-    if (
-      input.issue.status !== "in_progress" &&
-      input.issue.status !== "in_review"
-    )
-      return null;
+    now?: Date;
+  }): Promise<ProviderQuotaMonitorOutcome> {
+    // The sweep loads its candidates before the monitor scheduler runs, so
+    // `input.issue` can predate a trigger that happened moments ago. Writing
+    // that snapshot's execution state back erases the trigger's attempt count
+    // and lastTriggeredAt — the loop then cannot see its own history. Re-read.
+    const [issue] = await db
+      .select()
+      .from(issues)
+      .where(
+        and(
+          eq(issues.companyId, input.issue.companyId),
+          eq(issues.id, input.issue.id),
+        ),
+      );
+    if (!issue) return { kind: "skipped" };
 
-    const targetAgentId = getAdapterFailureRecoveryTargetAgentId(input.issue);
+    if (issue.status !== "in_progress" && issue.status !== "in_review")
+      return { kind: "skipped" };
+
+    const targetAgentId = getAdapterFailureRecoveryTargetAgentId(issue);
     if (!targetAgentId || input.latestRun.agentId !== targetAgentId)
-      return null;
+      return { kind: "skipped" };
+
+    const now = input.now ?? new Date();
+    const attemptCount = readProviderQuotaMonitorAttemptCount(issue);
+    // `maxAttempts: null` let this monitor re-arm without limit, so a quota that
+    // outlived the backoff produced an unbounded series of hourly wake-ups that
+    // never escalated. Hand the issue to the board instead of sleeping again.
+    if (attemptCount >= PROVIDER_QUOTA_RECOVERY_MONITOR_MAX_ATTEMPTS)
+      return { kind: "escalate", reason: "attempts_exhausted" };
+    // A reset days out is a provider outage, not something to wait through one
+    // silent hour at a time while every downstream issue reports a live blocker.
+    if (
+      input.classification.retryAt.getTime() - now.getTime() >
+      PROVIDER_QUOTA_RECOVERY_MAX_MONITOR_HORIZON_MS
+    )
+      return { kind: "escalate", reason: "reset_beyond_horizon" };
 
     const previousPolicy = normalizeIssueExecutionPolicy(
-      input.issue.executionPolicy ?? null,
+      issue.executionPolicy ?? null,
     );
     const retryTargetDescription =
-      input.issue.status === "in_review"
+      issue.status === "in_review"
         ? "the active review participant"
         : "the original assignee";
     const policy = {
@@ -4067,46 +4206,83 @@ export function recoveryService(
         serviceName: PROVIDER_QUOTA_MONITOR_SERVICE_NAME,
         externalRef: input.latestRun.id,
         timeoutAt: null,
-        maxAttempts: null,
+        maxAttempts: PROVIDER_QUOTA_RECOVERY_MONITOR_MAX_ATTEMPTS,
         recoveryPolicy: "wake_owner" as const,
       },
     };
     const transition = applyIssueMonitorPolicyTransition({
-      issue: input.issue,
+      issue,
       policy,
       previousPolicy,
-      requestedStatus: input.issue.status,
+      requestedStatus: issue.status,
       requestedAssigneePatch: {},
       actor: { agentId: null, userId: null },
       monitorExplicitlyUpdated: true,
     });
-    const updated = await issuesSvc.update(input.issue.id, {
+    const updated = await issuesSvc.update(issue.id, {
       ...transition.patch,
       executionPolicy: policy,
     });
-    if (!updated) return null;
+    if (!updated) return { kind: "skipped" };
 
     await logActivity(db, {
-      companyId: input.issue.companyId,
+      companyId: issue.companyId,
       actorType: "system",
       actorId: "recovery",
       agentId: null,
       runId: input.latestRun.id,
       action: "issue.monitor_scheduled",
       entityType: "issue",
-      entityId: input.issue.id,
+      entityId: issue.id,
       details: {
-        identifier: input.issue.identifier,
+        identifier: issue.identifier,
         source: "recovery.provider_quota",
         latestRunId: input.latestRun.id,
         errorCode: "provider_quota",
         nextCheckAt: input.classification.retryAt.toISOString(),
         parsedResetTime: input.classification.parsedResetTime,
+        attemptCount,
+        maxAttempts: PROVIDER_QUOTA_RECOVERY_MONITOR_MAX_ATTEMPTS,
         targetAgentId,
       },
     });
 
-    return updated;
+    return { kind: "monitored", issue: updated };
+  }
+
+  /**
+   * A quota wait that can no longer be resolved by waiting. `provider_quota`
+   * routes to the system monitor and never notifies anyone, so escalate under a
+   * cause that takes the ordinary board route.
+   */
+  async function escalateExhaustedProviderQuotaRecovery(input: {
+    issue: typeof issues.$inferSelect;
+    previousStatus: StrandedPreviousStatus;
+    latestRun: NonNullable<LatestIssueRun>;
+    classification: Extract<
+      NonNullable<AdapterFailureRecoveryClassification>,
+      { kind: "provider_quota" }
+    >;
+    reason: "attempts_exhausted" | "reset_beyond_horizon";
+  }) {
+    const retryAt = input.classification.retryAt.toISOString();
+    const horizonHours = Math.round(
+      PROVIDER_QUOTA_RECOVERY_MAX_MONITOR_HORIZON_MS / (60 * 60 * 1000),
+    );
+    const comment =
+      input.reason === "reset_beyond_horizon"
+        ? `The provider quota for this task's adapter does not reset until ${retryAt}, further out than the ${horizonHours}h a recovery monitor may sleep through. ` +
+          "Escalating to the board instead of re-arming the monitor, which would report a live blocker on every downstream task for days while attempting nothing. " +
+          "Restore provider capacity or move the agent to another adapter, then retry the original owner."
+        : `The provider-quota recovery monitor has come due ${PROVIDER_QUOTA_RECOVERY_MONITOR_MAX_ATTEMPTS} times without the quota clearing (latest reset estimate ${retryAt}). ` +
+          "Escalating to the board instead of re-arming it again.";
+    return escalateStrandedAssignedIssue({
+      issue: input.issue,
+      previousStatus: input.previousStatus,
+      latestRun: input.latestRun,
+      recoveryCause: "provider_quota_recovery_exhausted",
+      comment,
+    });
   }
 
   function getAdapterFailureRecoveryTargetAgentId(
@@ -4531,18 +4707,40 @@ export function recoveryService(
         }
 
         if (adapterFailureClassification.kind === "provider_quota") {
+          const quotaRun = latestRun;
           const monitored = await scheduleProviderQuotaRecoveryMonitor({
             issue,
-            latestRun,
+            latestRun: quotaRun,
             classification: adapterFailureClassification,
+            now: recoveryNow,
           });
-          if (monitored) {
+          if (monitored.kind === "monitored") {
             latestRun = await persistAdapterFailureRecoveryClassification(
-              latestRun,
+              quotaRun,
               adapterFailureClassification,
             );
             result.providerQuotaMonitored += 1;
             result.issueIds.push(issue.id);
+            continue;
+          }
+          if (monitored.kind === "escalate") {
+            const updated = await escalateExhaustedProviderQuotaRecovery({
+              issue,
+              previousStatus: issue.status as StrandedPreviousStatus,
+              latestRun: quotaRun,
+              classification: adapterFailureClassification,
+              reason: monitored.reason,
+            });
+            if (updated) {
+              latestRun = await persistAdapterFailureRecoveryClassification(
+                quotaRun,
+                adapterFailureClassification,
+              );
+              result.escalated += 1;
+              result.issueIds.push(issue.id);
+            } else {
+              result.skipped += 1;
+            }
             continue;
           }
           result.skipped += 1;
@@ -4759,14 +4957,33 @@ export function recoveryService(
             issue,
             latestRun: participantLatestRun,
             classification: participantAdapterFailureClassification,
+            now: recoveryNow,
           });
-          if (monitored) {
+          if (monitored.kind === "monitored") {
             latestRun = await persistAdapterFailureRecoveryClassification(
               participantLatestRun,
               participantAdapterFailureClassification,
             );
             result.providerQuotaMonitored += 1;
             result.issueIds.push(issue.id);
+          } else if (monitored.kind === "escalate") {
+            const updated = await escalateExhaustedProviderQuotaRecovery({
+              issue,
+              previousStatus: "in_review",
+              latestRun: participantLatestRun,
+              classification: participantAdapterFailureClassification,
+              reason: monitored.reason,
+            });
+            if (updated) {
+              latestRun = await persistAdapterFailureRecoveryClassification(
+                participantLatestRun,
+                participantAdapterFailureClassification,
+              );
+              result.escalated += 1;
+              result.issueIds.push(issue.id);
+            } else {
+              result.skipped += 1;
+            }
           } else {
             result.skipped += 1;
           }

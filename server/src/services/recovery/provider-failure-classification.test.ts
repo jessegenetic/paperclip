@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   PROVIDER_QUOTA_RECOVERY_DEFAULT_BACKOFF_MS,
+  PROVIDER_QUOTA_RESET_PARSED_KEY,
   classifyAdapterFailureForRecovery,
   classifyContinuationFailure,
 } from "./service.js";
@@ -109,6 +110,92 @@ describe("classifyAdapterFailureForRecovery", () => {
     expect(classification).toEqual({
       kind: "provider_quota",
       retryAt: new Date("2026-08-29T02:30:00.000Z"),
+      parsedResetTime: true,
+    });
+  });
+
+  // LOL-234: the 2026-09-29 codex_local outage reset 109h out. A clock-only
+  // parser tops out at ~24h, so the real deadline was replaced by a 1h default.
+  it("parses a date-bearing reset beyond the one-day ceiling", () => {
+    const now = new Date("2026-09-29T04:55:00.000Z");
+    const classification = classifyAdapterFailureForRecovery({
+      errorCode: "adapter_failed",
+      error:
+        "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage " +
+        "to purchase more credits or try again at Oct 3rd, 2026 10:00 AM.",
+      resultJson: null,
+    }, now);
+
+    expect(classification).toEqual({
+      kind: "provider_quota",
+      retryAt: new Date("2026-10-03T10:00:00.000Z"),
+      parsedResetTime: true,
+    });
+    const hoursOut =
+      (classification?.kind === "provider_quota"
+        ? classification.retryAt.getTime() - now.getTime()
+        : 0) / 3_600_000;
+    expect(hoursOut).toBeGreaterThan(24);
+  });
+
+  it("resolves a date-bearing reset against an explicit timezone", () => {
+    expect(classifyAdapterFailureForRecovery({
+      errorCode: "adapter_failed",
+      error: "You've hit your usage limit. Try again at Oct 3rd, 2026 10:00 AM (America/Chicago).",
+      resultJson: null,
+    }, new Date("2026-09-29T04:55:00.000Z"))).toEqual({
+      kind: "provider_quota",
+      retryAt: new Date("2026-10-03T15:00:00.000Z"),
+      parsedResetTime: true,
+    });
+  });
+
+  it("does not read a reset clock out of a non-month leading word", () => {
+    const now = new Date("2026-09-29T04:55:00.000Z");
+    expect(classifyAdapterFailureForRecovery({
+      errorCode: "provider_quota",
+      error: "You've hit your usage limit. Try again at sometime 10 soon.",
+      resultJson: null,
+    }, now)).toEqual({
+      kind: "provider_quota",
+      retryAt: new Date(now.getTime() + PROVIDER_QUOTA_RECOVERY_DEFAULT_BACKOFF_MS),
+      parsedResetTime: false,
+    });
+  });
+
+  // This service writes its own fallback deadline back into `retryNotBefore`,
+  // so without recorded provenance a re-read reports the invented deadline as
+  // the provider's and the monitor note claims a reset time we never obtained.
+  it("does not report its own fallback deadline as a parsed provider reset", () => {
+    const now = new Date("2026-09-29T03:30:00.000Z");
+    expect(classifyAdapterFailureForRecovery({
+      errorCode: "provider_quota",
+      error: "ACP agent reported a terminal limit failure.",
+      resultJson: {
+        errorFamily: "provider_quota",
+        retryNotBefore: "2026-09-29T04:06:34.033Z",
+        providerQuotaRetryNotBefore: "2026-09-29T04:06:34.033Z",
+        [PROVIDER_QUOTA_RESET_PARSED_KEY]: false,
+      },
+    }, now)).toEqual({
+      kind: "provider_quota",
+      retryAt: new Date("2026-09-29T04:06:34.033Z"),
+      parsedResetTime: false,
+    });
+  });
+
+  it("still trusts an adapter-supplied reset that carries no provenance marker", () => {
+    const now = new Date("2026-09-29T03:30:00.000Z");
+    expect(classifyAdapterFailureForRecovery({
+      errorCode: "provider_quota",
+      error: "ACP agent reported a terminal limit failure.",
+      resultJson: {
+        errorFamily: "provider_quota",
+        retryNotBefore: "2026-10-03T15:00:00.000Z",
+      },
+    }, now)).toEqual({
+      kind: "provider_quota",
+      retryAt: new Date("2026-10-03T15:00:00.000Z"),
       parsedResetTime: true,
     });
   });

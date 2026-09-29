@@ -11603,6 +11603,15 @@ export function heartbeatService(
             targetAgent,
             {
               now: input.now,
+              // A provider-quota wait is not transient-infra flapping. The
+              // quota failure itself already spent the shared transient budget
+              // retrying seconds apart while the quota was still exhausted, so
+              // sizing this dispatch against that budget makes every firing of
+              // the monitor a no-op. The deadline is the provider's: allow
+              // exactly one attempt now that the reset is due, and let the
+              // monitor's own attempt bound decide how often we come back.
+              maxAttempts: executionFailureRetryCount(sourceRun) + 1,
+              delayMs: 0,
               ...(isProviderQuotaReviewMonitor
                 ? {
                     retryReason:
@@ -11615,6 +11624,13 @@ export function heartbeatService(
           );
           if (scheduled.outcome === "not_scheduled")
             throw conflict(scheduled.reason);
+          // Falling through here logs `issue.monitor_triggered` as a success
+          // having created no run at all, which is exactly how a due quota
+          // retry re-armed hourly forever while attempting nothing.
+          if (scheduled.outcome === "retry_exhausted")
+            throw conflict(
+              "The provider-quota retry budget is exhausted; inspect the current task execution.",
+            );
         }
       } else
         await enqueueWakeup(targetAgentId, {

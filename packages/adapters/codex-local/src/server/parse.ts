@@ -9,7 +9,14 @@ const CODEX_TRANSIENT_UPSTREAM_RE =
   /(?:we(?:'|’)re\s+currently\s+experiencing\s+high\s+demand|temporary\s+errors|rate[-\s]?limit(?:ed)?|too\s+many\s+requests|\b429\b|server\s+overloaded|service\s+unavailable|try\s+again\s+later)/i;
 const CODEX_REMOTE_COMPACTION_RE = /remote\s+compact\s+task/i;
 const CODEX_USAGE_LIMIT_RE =
-  /you(?:'|’)ve hit your usage limit for .+\.\s+switch to another model now,\s+or try again at\s+([^.!\n]+)(?:[.!]|\n|$)/i;
+  /(?:you(?:'|’)ve hit your usage limit|usage limit (?:reached|exceeded))/i;
+// The reset clock is wherever the message puts "try again at". Codex has moved
+// it between wordings — first model-switch advice ("...for GPT-5. Switch to
+// another model now, or try again at 4:30 PM"), now a credits/Visit-URL
+// sentence ("...to purchase more credits or try again at Oct 3rd, 2026 10:00
+// AM.") — so match the clause itself rather than the sentence around it.
+const CODEX_USAGE_LIMIT_RESET_RE =
+  /(?:try again at|resets?(?:\s+at)?)\s+([^\n]+?)\s*(?:[.!](?:\s|$)|\n|$)/i;
 const CODEX_PROVIDER_QUOTA_RE =
   /(?:you(?:'|’)ve hit your usage limit|usage limit|model (?:is )?at capacity|at capacity for this model|capacity limit)/i;
 const CODEX_REFRESH_TOKEN_REUSED_RE =
@@ -261,28 +268,93 @@ function nextClockTimeInTimeZone(input: {
   return retryAt;
 }
 
+/**
+ * A reset more than a day out cannot be expressed by a clock alone, so Codex
+ * interposes a date: `try again at Oct 3rd, 2026 10:00 AM`. Resolve the date
+ * when it is present and fall back to the next occurrence of the bare clock.
+ */
+function datedClockTimeInTimeZone(input: {
+  now: Date;
+  year: number | null;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  timeZoneHint: string;
+}): Date | null {
+  const timeZone = normalizeResetTimeZone(input.timeZoneHint);
+  if (!timeZone) return null;
+
+  const year = input.year ?? readTimeZoneParts(input.now, timeZone).year;
+  const at = (resolvedYear: number) =>
+    dateFromTimeZoneWallClock({
+      year: resolvedYear,
+      month: input.month,
+      day: input.day,
+      hour: input.hour,
+      minute: input.minute,
+      timeZone,
+    });
+
+  const retryAt = at(year);
+  if (!retryAt) return null;
+  // An explicit year is authoritative. Without one, a date already behind us
+  // means the provider meant next year's occurrence.
+  if (input.year === null && retryAt.getTime() <= input.now.getTime()) {
+    return at(year + 1);
+  }
+  return retryAt;
+}
+
+const MONTH_PREFIXES = [
+  "jan", "feb", "mar", "apr", "may", "jun",
+  "jul", "aug", "sep", "oct", "nov", "dec",
+] as const;
+
+const CODEX_RESET_CLOCK_RE =
+  /^(?:([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\s*,?\s*(\d{4})?[\s,]+)?(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?(?:\s*\(([^)]+)\)|\s+([A-Z]{2,5}))?$/i;
+
 function parseLocalClockTime(clockText: string, now: Date): Date | null {
-  const normalized = clockText.trim();
-  const match = normalized.match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s*m\.?(?:\s*\(([^)]+)\)|\s+([A-Z]{2,5}))?$/i);
+  const match = clockText.trim().match(CODEX_RESET_CLOCK_RE);
   if (!match) return null;
 
-  const hour12 = Number.parseInt(match[1] ?? "", 10);
-  const minute = Number.parseInt(match[2] ?? "0", 10);
+  const monthName = match[1]?.toLowerCase();
+  const monthIndex = monthName
+    ? MONTH_PREFIXES.findIndex((prefix) => monthName.startsWith(prefix))
+    : -1;
+  // A leading word that is not a month means this is not a reset clock at all.
+  if (monthName && monthIndex < 0) return null;
+  const day = match[2] ? Number.parseInt(match[2], 10) : null;
+  if (day !== null && (!Number.isInteger(day) || day < 1 || day > 31)) return null;
+  const year = match[3] ? Number.parseInt(match[3], 10) : null;
+
+  const hour12 = Number.parseInt(match[4] ?? "", 10);
+  const minute = Number.parseInt(match[5] ?? "0", 10);
   if (!Number.isInteger(hour12) || hour12 < 1 || hour12 > 12) return null;
   if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
 
   let hour24 = hour12 % 12;
-  if ((match[3] ?? "").toLowerCase() === "p") hour24 += 12;
+  if ((match[6] ?? "").toLowerCase() === "p") hour24 += 12;
 
-  const timeZoneHint = match[4] ?? match[5];
+  const explicitDate =
+    monthIndex >= 0 && day !== null ? { month: monthIndex + 1, day, year } : null;
+  const timeZoneHint = match[7] ?? match[8];
   if (timeZoneHint) {
-    const explicitRetryAt = nextClockTimeInTimeZone({
-      now,
-      hour: hour24,
-      minute,
-      timeZoneHint,
-    });
+    const explicitRetryAt = explicitDate
+      ? datedClockTimeInTimeZone({ now, ...explicitDate, hour: hour24, minute, timeZoneHint })
+      : nextClockTimeInTimeZone({ now, hour: hour24, minute, timeZoneHint });
     if (explicitRetryAt) return explicitRetryAt;
+  }
+
+  if (explicitDate) {
+    const resolvedYear = explicitDate.year ?? now.getFullYear();
+    const retryAt = new Date(now);
+    retryAt.setFullYear(resolvedYear, explicitDate.month - 1, explicitDate.day);
+    retryAt.setHours(hour24, minute, 0, 0);
+    if (explicitDate.year === null && retryAt.getTime() <= now.getTime()) {
+      retryAt.setFullYear(resolvedYear + 1);
+    }
+    return retryAt;
   }
 
   const retryAt = new Date(now);
@@ -299,9 +371,12 @@ export function extractCodexRetryNotBefore(input: {
   errorMessage?: string | null;
 }, now = new Date()): Date | null {
   const haystack = buildCodexErrorHaystack(input);
-  const usageLimitMatch = haystack.match(CODEX_USAGE_LIMIT_RE);
-  if (!usageLimitMatch) return null;
-  return parseLocalClockTime(usageLimitMatch[1] ?? "", now);
+  // Keep the reset clause scoped to a real usage-limit message: on its own,
+  // "try again at ..." also appears in transient upstream advice.
+  if (!CODEX_USAGE_LIMIT_RE.test(haystack)) return null;
+  const resetMatch = haystack.match(CODEX_USAGE_LIMIT_RESET_RE);
+  if (!resetMatch) return null;
+  return parseLocalClockTime(resetMatch[1] ?? "", now);
 }
 
 export function isCodexTransientUpstreamError(input: {
