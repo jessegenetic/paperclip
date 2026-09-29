@@ -10,6 +10,8 @@ export interface ExecutionContinuationEnvelope {
   };
   originCommentIds: string[];
   objective: string;
+  /** Server provenance permits removing an exact duplicate of task markdown. */
+  objectiveSource?: "issue_description" | "human_comment" | "issue_title";
   messages: Array<{
     id: string;
     authorType: string;

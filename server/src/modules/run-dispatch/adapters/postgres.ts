@@ -1,3 +1,4 @@
+import { deferredProviderEligibility } from "../../../services/provider-admission.js";
 import { hasConversationContinuationPolicy } from "../../../services/conversation-continuation.js";
 import { getExecutionBlocker } from "../../../services/execution-blocker.js";
 import { getNativeReviewAssignment } from "../../../services/native-runtime/native-review-participant.js";
@@ -801,6 +802,15 @@ export function createPostgresRunDispatchAdapter(
               telemetryRun: cancelled.run,
             }
           : { outcome: { outcome: "not_promoted" as const }, telemetryRun: null };
+      }
+
+      // Keep normal assignment, pause and approval gates above this floor.
+      // A "retry now" timer edit cannot shorten durable provider eligibility.
+      const providerEligibleAt = await deferredProviderEligibility(tx, run.companyId, run.id, now);
+      if (providerEligibleAt && providerEligibleAt > now) {
+        await tx.update(heartbeatRuns).set({ scheduledRetryAt: providerEligibleAt, updatedAt: now })
+          .where(and(eq(heartbeatRuns.companyId, run.companyId), eq(heartbeatRuns.id, run.id)));
+        return { outcome: { outcome: "not_promoted" as const }, telemetryRun: null };
       }
 
       const promoted = await promoteDueRetryInTx(tx as unknown as Db, {

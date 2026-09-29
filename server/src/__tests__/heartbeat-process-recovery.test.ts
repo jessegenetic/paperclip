@@ -1,3 +1,4 @@
+import { SHARED_PROVIDER_POOL } from "../services/provider-admission-policy.js";
 import * as controllerLeases from "../services/legacy-controller-lease.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
 import { randomUUID } from "node:crypto";
@@ -53,6 +54,7 @@ import {
   executionWorkspaces,
   heartbeatRunEvents,
   heartbeatRuns,
+  providerAdmissionPools,
   issueComments,
   issueApprovals,
   issueDocuments,
@@ -2566,6 +2568,43 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       await fs.rm(home, { recursive: true, force: true });
     }
   }
+
+  it("keeps a fresh native wake parked during a known provider cooldown", async () => {
+    await withTempPaperclipHome(async () => {
+      const { companyId, agentId, runId } = await seedQueuedIssueRunFixture();
+      await db.update(agents).set({ adapterType: "paperclip_runner",
+        adapterConfig: { provider: "codex", model: "gpt-5.6-luna" },
+      }).where(eq(agents.id, agentId));
+      const cooldownUntil = new Date(Date.now() + 86_400_000);
+      await db.insert(providerAdmissionPools).values({ companyId,
+        poolKey: SHARED_PROVIDER_POOL, cooldownUntil });
+      const factory = vi.fn(() => { throw new Error("provider must not start"); });
+      const heartbeat = heartbeatService(db, { nativeSessionBackendFactory: factory });
+      await heartbeat.resumeQueuedRuns();
+      await heartbeat.drainActiveRunExecutions();
+      expect(await heartbeat.getRun(runId)).toMatchObject({ status: "scheduled_retry",
+        scheduledRetryAt: cooldownUntil, runtimeMode: "legacy" });
+      expect(factory).not.toHaveBeenCalled();
+      expect(await db.select().from(nativeRunFinalizations)
+        .where(eq(nativeRunFinalizations.runId, runId))).toHaveLength(0);
+    });
+  });
+
+  it("dispatches fresh native selection without applying a stale legacy admission owner", async () => {
+    await withTempPaperclipHome(async () => {
+      const { agentId, runId } = await seedQueuedIssueRunFixture();
+      await db.update(agents).set({ adapterType: "paperclip_runner",
+        adapterConfig: { provider: "codex", model: "gpt-5.6-luna" },
+      }).where(eq(agents.id, agentId));
+      // Stop at the injected backend factory: no real provider is created.
+      const factory = vi.fn(() => { throw new Error("native_admission_test_boundary"); });
+      const heartbeat = heartbeatService(db, { nativeSessionBackendFactory: factory });
+      await heartbeat.resumeQueuedRuns();
+      await heartbeat.drainActiveRunExecutions();
+      expect(await heartbeat.getRun(runId)).toMatchObject({ runtimeMode: "native" });
+      expect(factory).toHaveBeenCalledOnce();
+    });
+  });
 
   it("fences native selection when cancellation wins during preparation", async () => {
     await withTempPaperclipHome(async () => {

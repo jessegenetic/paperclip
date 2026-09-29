@@ -1,3 +1,5 @@
+import { providerAdmissionService } from "./provider-admission.js";
+import { computeProviderRetrySchedule } from "./provider-retry-policy.js";
 import { externalConversationStateSql, nonIdleSlackIssueCondition } from "./slack-conversation-state.js";
 import { settleSlackConversation } from "./slack-conversation-lifecycle.js";
 import { publicChatTaskUrl } from "./chat-task-url.js";
@@ -9249,6 +9251,8 @@ export interface HeartbeatServiceOptions {
     runId: string;
     reason: string;
   }) => Promise<{ closed: number; busy: number; failed: number }>;
+  /** Test seam for extending admission during workspace preparation. */
+  beforeProviderAdmissionCheck?: (runId: string) => Promise<void>;
   /** Test seam for changing a continuation issue at the final pre-dispatch boundary. */
   beforeResolvedInteractionContinuationDispatchCheck?: (input: {
     runId: string;
@@ -9485,6 +9489,7 @@ export function heartbeatService(
     },
   });
   const runDispatch = createRunDispatch(db);
+  const providerAdmission = providerAdmissionService(db);
 
   // Applies the post-commit effects a run-dispatch operation returns, on a
   // best-effort basis, exactly as this service publishes them for every
@@ -15228,33 +15233,34 @@ export function heartbeatService(
       retryReason === MAX_TURN_CONTINUATION_RETRY_REASON
         ? (run.scheduledRetryAttempt ?? 0)
         : executionFailureRetryCount(run)) + 1;
-    const computedBaseSchedule =
-      opts?.delayMs != null
+    const transientRecovery =
+      retryReason === BOUNDED_TRANSIENT_HEARTBEAT_RETRY_REASON
+        ? readTransientRecoveryContractFromRun(run)
+        : null;
+    const computedBaseSchedule = transientRecovery
+      ? computeProviderRetrySchedule({
+          attempt: nextAttempt,
+          maxAttempts,
+          now,
+          retryNotBefore: transientRecovery.retryNotBefore,
+          random: opts?.random,
+        })
+      : opts?.delayMs != null
         ? nextAttempt <= maxAttempts
           ? {
               attempt: nextAttempt,
               baseDelayMs: Math.max(0, Math.floor(opts.delayMs)),
               delayMs: Math.max(0, Math.floor(opts.delayMs)),
-              dueAt: new Date(
-                now.getTime() + Math.max(0, Math.floor(opts.delayMs)),
-              ),
+              dueAt: new Date(now.getTime() + Math.max(0, Math.floor(opts.delayMs))),
               maxAttempts,
             }
           : null
         : nextAttempt <= maxAttempts
-          ? computeBoundedTransientHeartbeatRetrySchedule(
-              nextAttempt,
-              now,
-              opts?.random,
-            )
+          ? computeBoundedTransientHeartbeatRetrySchedule(nextAttempt, now, opts?.random)
           : null;
     const baseSchedule = computedBaseSchedule
       ? { ...computedBaseSchedule, maxAttempts }
       : null;
-    const transientRecovery =
-      retryReason === BOUNDED_TRANSIENT_HEARTBEAT_RETRY_REASON
-        ? readTransientRecoveryContractFromRun(run)
-        : null;
     const codexTransientFallbackMode =
       agent.adapterType === "codex_local" &&
       transientRecovery?.errorFamily === "transient_upstream"
@@ -17300,6 +17306,13 @@ export function heartbeatService(
       }
     }
 
+    // Check before claiming runtime resources. This is not dispatch permission:
+    // another run can extend the cooldown while this run prepares its workspace.
+    const admission = await providerAdmission.reserve(run.companyId, run.id, new Date(), {
+      checkOnly: true, parkDeniedRun: true,
+    });
+    if (admission.kind !== "eligible") return null;
+
     const claimedAt = new Date();
     const responsibleUserId = await resolveResponsibleUserIdForRun({
       run,
@@ -17863,7 +17876,7 @@ export function heartbeatService(
 
   async function finalizeAgentStatus(
     agentId: string,
-    outcome: "succeeded" | "interrupted" | "failed" | "cancelled" | "timed_out",
+    outcome: "succeeded" | "interrupted" | "failed" | "cancelled" | "timed_out" | "deferred",
     failureReason?: string | null,
     options?: { keepIdleOnFailure?: boolean; wasFirstHeartbeat?: boolean },
   ) {
@@ -17882,6 +17895,7 @@ export function heartbeatService(
       runningCount > 0
         ? "running"
         : outcome === "succeeded" ||
+            outcome === "deferred" ||
             outcome === "interrupted" ||
             outcome === "cancelled" ||
             (outcome === "failed" && options?.keepIdleOnFailure)
@@ -22205,6 +22219,7 @@ export function heartbeatService(
       }
       const dispatchResolvedInteractionContinuationWithAtomicGate = async <T>(
         dispatch: (markDispatchStarted: () => void) => Promise<T>,
+        selectedRuntimeMode: "legacy" | "native" = "legacy",
       ): Promise<
         { dispatched: true; resultPromise: Promise<T> } | { dispatched: false }
       > => {
@@ -22223,11 +22238,28 @@ export function heartbeatService(
           ))
         )
           return { dispatched: false };
+        // Native restart/reattachment has separate ownership semantics and
+        // requires integration at its provider-turn boundary, not this legacy gate.
+        const reserveLegacyDispatch = async () => {
+          // Fresh native selection changes the persisted row after `run` was
+          // loaded. Use the trusted resolver decision at this call site, not
+          // that stale pre-selection snapshot.
+          if (selectedRuntimeMode === "native") return true;
+          await options.beforeProviderAdmissionCheck?.(run.id);
+          const admission = await providerAdmission.reserve(run.companyId, run.id, new Date(), {
+            legacyDispatchOwner: legacyControllerBootId,
+          });
+          if (admission.kind === "deferred") {
+            await finalizeAgentStatus(run.agentId, "deferred");
+          }
+          return admission.kind === "admitted";
+        };
         if (
           !issueId ||
           (!isResolvedInteractionContinuationWakeContext(context) &&
             run.scheduledRetryReason !== "native_safe_replacement")
         ) {
+          if (!(await reserveLegacyDispatch())) return { dispatched: false };
           return { dispatched: true, resultPromise: dispatch(() => {}) };
         }
         await options.beforeResolvedInteractionContinuationDispatchCheck?.({
@@ -22239,6 +22271,9 @@ export function heartbeatService(
           runId: run.id,
           issueId,
         });
+        // Reserve outside the issue/run transaction: admission locks pool
+        // then run, so acquiring it inside that gate would invert lock order.
+        if (!(await reserveLegacyDispatch())) return { dispatched: false };
         const gate = await runDispatch.dispatchResolvedInteractionIfCurrent({
           runId: run.id,
           companyId: run.companyId,
@@ -24171,6 +24206,7 @@ export function heartbeatService(
                       await persistRunProcessMetadata(run.id, meta);
                     },
                   }),
+                "native",
               );
             if (!guardedDispatch.dispatched) return;
             nativeDispatchStarted = true;
@@ -24339,6 +24375,22 @@ export function heartbeatService(
               );
             if (!guardedDispatch.dispatched) return;
             adapterResult = await guardedDispatch.resultPromise;
+            // Commit the shared floor before terminal publication or issue
+            // release can launch another wake. This is independent of retry
+            // budget and workspace finalization succeeding.
+            const recovery = readTransientRecoveryContractFromRun({
+              errorCode: adapterResult.errorCode ?? null,
+              resultJson: mergeAdapterRecoveryMetadata({
+                resultJson: adapterResult.resultJson,
+                errorFamily: adapterResult.errorFamily,
+                retryNotBefore: adapterResult.retryNotBefore,
+              }) ?? null,
+            });
+            await providerAdmission.settle({ companyId: run.companyId, runId: run.id,
+              outcome: recovery?.errorFamily ?? (adapterResult.timedOut ? "timed_out" :
+                adapterResult.exitCode === 0 ? "succeeded" : "failed"),
+              ...(recovery ? { providerFailure: { retryNotBefore: recovery.retryNotBefore } } : {}),
+            });
           }
           // Adapter returned cleanly, which means its workspace-restore finally
           // block also ran without throwing. Record the workspace_finalize
@@ -25438,6 +25490,11 @@ export function heartbeatService(
         const stoppedDuringFailure = executionControl.controller.signal.aborted;
         const stopSnapshot = stoppedDuringFailure ? await getRun(run.id) : null;
         const failureOutcome = stoppedDuringFailure ? "cancelled" : "failed";
+        // A thrown adapter failure has no structured provider deadline.
+        // Record that outcome without inventing quota or token evidence.
+        if (legacyAdapterEntered) await providerAdmission.settle({
+          companyId: run.companyId, runId: run.id, outcome: failureOutcome,
+        });
         const failedRunWrite = await setRunStatusIfRunning(run.id, failureOutcome, {
           error: message,
           errorCode: stopSnapshot?.errorCode ?? failureErrorCode,
@@ -25829,6 +25886,15 @@ export function heartbeatService(
       if (managedAiRuntime) await managedAiRuntime.cleanup().catch(() => logger.warn({ runId: run.id }, "AI connection refresh or cleanup failed"));
       let latestRun = await getRun(run.id).catch(() => null);
       try {
+        if (latestRun?.runtimeMode === "legacy" && isHeartbeatRunTerminalStatus(latestRun.status)) {
+          // Also settle reservations cancelled by a later policy gate. A
+          // reservation is not evidence that adapter/provider work began.
+          const recovery = readTransientRecoveryContractFromRun(latestRun);
+          await providerAdmission.settle({ companyId: run.companyId, runId: run.id,
+            outcome: recovery?.errorFamily ?? latestRun.status,
+            ...(recovery ? { providerFailure: { retryNotBefore: recovery.retryNotBefore } } : {}),
+          }).catch((err) => logger.error({ err, runId: run.id }, "provider receipt settlement failed during teardown"));
+        }
         if (latestRun && isHeartbeatRunTerminalStatus(latestRun.status)) {
           await db
             .update(heartbeatRuns)

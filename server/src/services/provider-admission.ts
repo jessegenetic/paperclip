@@ -1,0 +1,189 @@
+import { and, eq, gt, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { type Db, agents, agentWakeupRequests, heartbeatRuns, issues,
+  providerAdmissionPools, providerDispatchReceipts } from "@paperclipai/db";
+import { AUTOMATED_ISSUE_DISPATCH_WINDOW_MS, SHARED_PROVIDER_POOL,
+  providerAdmissionEligibility } from "./provider-admission-policy.js";
+import { computeProviderRetrySchedule } from "./provider-retry-policy.js";
+
+type AdmissionTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+export const PROVIDER_ADMISSION_RETRY_REASON = "provider_admission";
+
+async function dispatchWindow(tx: Pick<AdmissionTransaction, "select">, companyId: string, issueId: string | null, now: Date) {
+  if (!issueId) return [];
+  const rows = await tx.select({ at: providerDispatchReceipts.admittedAt })
+    .from(providerDispatchReceipts).where(and(
+      eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.issueId, issueId),
+      eq(providerDispatchReceipts.automated, true), isNotNull(providerDispatchReceipts.admittedAt),
+      gt(providerDispatchReceipts.admittedAt, new Date(now.getTime() - AUTOMATED_ISSUE_DISPATCH_WINDOW_MS)),
+    ));
+  return rows.flatMap(({ at }) => at ? [at] : []);
+}
+
+async function lockPool(tx: AdmissionTransaction, companyId: string, now: Date) {
+  await tx.insert(providerAdmissionPools).values({ companyId, poolKey: SHARED_PROVIDER_POOL, updatedAt: now })
+    .onConflictDoNothing();
+  const [pool] = await tx.select().from(providerAdmissionPools).where(and(
+    eq(providerAdmissionPools.companyId, companyId), eq(providerAdmissionPools.poolKey, SHARED_PROVIDER_POOL),
+  )).for("update");
+  if (!pool) throw new Error("Provider admission pool missing");
+  return pool;
+}
+
+/** Read-only timer floor inside the scheduler's issue/run transaction. Do not
+ * acquire the pool lock here: admission uses pool -> run while the scheduler
+ * uses issue -> run. A concurrent failure can extend this floor after the read;
+ * the queued preflight and final dispatch reservation must recheck it. */
+export async function deferredProviderEligibility(
+  db: Pick<AdmissionTransaction, "select">, companyId: string, runId: string, now: Date,
+) {
+  const [receipt] = await db.select().from(providerDispatchReceipts).where(and(
+    eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.runId, runId),
+  ));
+  if (!receipt || receipt.admittedAt) return null;
+  const [pool] = await db.select().from(providerAdmissionPools).where(and(
+    eq(providerAdmissionPools.companyId, companyId), eq(providerAdmissionPools.poolKey, receipt.poolKey),
+  ));
+  const decision = providerAdmissionEligibility({ now, cooldownUntil: pool?.cooldownUntil ?? null,
+    automated: receipt.automated,
+    automatedDispatches: await dispatchWindow(db, companyId, receipt.issueId, now) });
+  return new Date(Math.max(decision.eligibleAt.getTime(), receipt.eligibleAt.getTime()));
+}
+
+/** Every decision and its receipt commit together. No provider work runs in this transaction. */
+export function providerAdmissionService(db: Db) {
+  return {
+    async reserve(companyId: string, runId: string, now = new Date(), options: { parkDeniedRun?: boolean; checkOnly?: boolean; legacyDispatchOwner?: string } = {}) {
+      return db.transaction(async (tx) => {
+        const pool = await lockPool(tx, companyId, now);
+        const [run] = await tx.select().from(heartbeatRuns).where(and(
+          eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId),
+        )).for("update");
+        if (!run || !["queued", "running"].includes(run.status)) return { kind: "stale" as const };
+        // Parking belongs before claim/startup. Never erase ownership of a
+        // running native or legacy process merely because its pool is cooling.
+        if ((options.parkDeniedRun || options.checkOnly) && run.status !== "queued") return { kind: "stale" as const };
+        // Only the owning legacy controller may park after preparation. A
+        // process marker or native runtime means this is no longer a safe
+        // pre-entry boundary. A receipt alone never authorizes replay.
+        if (options.legacyDispatchOwner && (run.status !== "running" ||
+          run.runtimeMode !== "legacy" || run.controllerBootId !== options.legacyDispatchOwner ||
+          !run.controllerLeaseExpiresAt || run.controllerLeaseExpiresAt <= now ||
+          run.processPid !== null || run.processGroupId !== null || run.processStartedAt !== null)) {
+          return { kind: "stale" as const };
+        }
+        // Resolve authority from persisted runtime records; wake JSON never selects an account or exemption.
+        const [agent] = await tx.select({ id: agents.id }).from(agents).where(and(
+          eq(agents.companyId, companyId), eq(agents.id, run.agentId),
+        ));
+        if (!agent) throw new Error("Provider admission agent boundary mismatch");
+        const [wake] = run.wakeupRequestId ? await tx.select().from(agentWakeupRequests).where(and(
+          eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.id, run.wakeupRequestId),
+          eq(agentWakeupRequests.agentId, run.agentId),
+        )) : [];
+        const automated = !wake || !["user", "board"].includes(wake.requestedByActorType ?? "");
+        const candidate = run.nativeIssueId ?? (typeof run.contextSnapshot?.issueId === "string" ? run.contextSnapshot.issueId : null);
+        const [issue] = candidate ? await tx.select({ id: issues.id }).from(issues).where(and(
+          eq(issues.companyId, companyId), eq(issues.id, candidate),
+        )) : [];
+        if (candidate && !issue) throw new Error("Provider admission issue boundary mismatch");
+        const [existing] = await tx.select().from(providerDispatchReceipts).where(and(
+          eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.runId, runId),
+        ));
+        // A receipt is an at-most-once dispatch reservation. A duplicate scheduler
+        // cannot use it to launch the same provider turn twice.
+        if (existing?.admittedAt) return { kind: "duplicate" as const };
+        const decision = providerAdmissionEligibility({ now, cooldownUntil: pool.cooldownUntil,
+          automated, automatedDispatches: await dispatchWindow(tx, companyId, issue?.id ?? null, now) });
+        // Preflight does not consume a dispatch slot. The final provider
+        // handoff must still reserve after preparation and ownership checks.
+        if (decision.eligible && options.checkOnly) return { kind: "eligible" as const };
+        const values = { companyId, runId, issueId: issue?.id ?? null, poolKey: SHARED_PROVIDER_POOL,
+          automated, admittedAt: decision.eligible ? now : null, eligibleAt: decision.eligibleAt,
+          suppressionCount: (existing?.suppressionCount ?? 0) + (decision.eligible ? 0 : 1),
+          suppressionReason: decision.reasons.join(",") || null, updatedAt: now };
+        await tx.insert(providerDispatchReceipts).values(values).onConflictDoUpdate({
+          target: providerDispatchReceipts.runId, set: values,
+        });
+        if (!decision.eligible && (options.parkDeniedRun || options.legacyDispatchOwner)) {
+          // The receipt and timer commit together. Keep the same run, wake,
+          // context, issue lock, and retry budget; a denial is not a failure.
+          await tx.update(heartbeatRuns).set({ status: "scheduled_retry",
+            ...(options.legacyDispatchOwner ? { startedAt: null, executionControlDeadlineAt: null } : {}),
+            scheduledRetryAt: decision.eligibleAt,
+            scheduledRetryReason: run.scheduledRetryReason ?? PROVIDER_ADMISSION_RETRY_REASON,
+            updatedAt: now,
+          }).where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId)));
+        }
+        if (!decision.eligible && options.legacyDispatchOwner && run.wakeupRequestId) {
+          await tx.update(agentWakeupRequests).set({ status: "queued", claimedAt: null, updatedAt: now })
+            .where(and(eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.id, run.wakeupRequestId)));
+        }
+        return decision.eligible
+          ? { kind: "admitted" as const, eligibleAt: decision.eligibleAt }
+          : { kind: "deferred" as const, eligibleAt: decision.eligibleAt, reasons: decision.reasons };
+      });
+    },
+
+    /** Timer-only check. Queueing is not dispatch permission: reserve must run
+     * again immediately before dispatch, including after a concurrent failure.
+     * Returning the same run to queued makes duplicate timer claims inert. */
+    async resumeDeferred(companyId: string, runId: string, now = new Date()) {
+      return db.transaction(async (tx) => {
+        const pool = await lockPool(tx, companyId, now);
+        const [run] = await tx.select().from(heartbeatRuns).where(and(
+          eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId),
+        )).for("update");
+        if (!run || run.status !== "scheduled_retry") return { kind: "stale" as const };
+        const [receipt] = await tx.select().from(providerDispatchReceipts).where(and(
+          eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.runId, runId),
+        ));
+        if (!receipt || receipt.admittedAt) return { kind: "stale" as const };
+        const decision = providerAdmissionEligibility({ now, cooldownUntil: pool.cooldownUntil,
+          automated: receipt.automated,
+          automatedDispatches: await dispatchWindow(tx, companyId, receipt.issueId, now) });
+        // Persist a newly extended floor once, without counting each timer
+        // observation as another suppressed wake or provider attempt.
+        const eligibleAt = new Date(Math.max(decision.eligibleAt.getTime(), receipt.eligibleAt.getTime()));
+        if (eligibleAt > now) {
+          if (run.scheduledRetryAt?.getTime() !== eligibleAt.getTime()) {
+            await tx.update(heartbeatRuns).set({ scheduledRetryAt: eligibleAt, updatedAt: now })
+              .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId)));
+            await tx.update(providerDispatchReceipts).set({ eligibleAt, updatedAt: now })
+              .where(and(eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.runId, runId)));
+          }
+          return { kind: "deferred" as const, eligibleAt };
+        }
+        await tx.update(heartbeatRuns).set({ status: "queued", scheduledRetryAt: null, updatedAt: now })
+          .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId)));
+        return { kind: "queued" as const };
+      });
+    },
+
+    async settle(input: { companyId: string; runId: string; outcome: string;
+      providerFailure?: { retryNotBefore?: Date | null }; now?: Date; random?: () => number }) {
+      const now = input.now ?? new Date();
+      return db.transaction(async (tx) => {
+        const pool = await lockPool(tx, input.companyId, now);
+        const [receipt] = await tx.select().from(providerDispatchReceipts).where(and(
+          eq(providerDispatchReceipts.companyId, input.companyId), eq(providerDispatchReceipts.runId, input.runId),
+        )).for("update");
+        if (!receipt?.admittedAt || receipt.settledAt) return;
+        await tx.update(providerDispatchReceipts).set({ outcome: input.outcome, settledAt: now, updatedAt: now })
+          .where(eq(providerDispatchReceipts.runId, input.runId));
+        if (input.providerFailure) {
+          const attempt = Math.min(pool.consecutiveFailures + 1, 1_000_000);
+          const schedule = computeProviderRetrySchedule({ attempt, maxAttempts: 1_000_000, now,
+            retryNotBefore: input.providerFailure.retryNotBefore, random: input.random })!;
+          await tx.update(providerAdmissionPools).set({ consecutiveFailures: attempt,
+            cooldownUntil: new Date(Math.max(pool.cooldownUntil?.getTime() ?? 0, schedule.dueAt.getTime())), updatedAt: now,
+          }).where(and(eq(providerAdmissionPools.companyId, input.companyId), eq(providerAdmissionPools.poolKey, SHARED_PROVIDER_POOL)));
+        } else if (input.outcome === "succeeded") {
+          // An older in-flight success must never clear a later failure's reset floor.
+          await tx.update(providerAdmissionPools).set({ consecutiveFailures: 0, updatedAt: now })
+            .where(and(eq(providerAdmissionPools.companyId, input.companyId), eq(providerAdmissionPools.poolKey, SHARED_PROVIDER_POOL),
+              or(isNull(providerAdmissionPools.cooldownUntil), lte(providerAdmissionPools.cooldownUntil, now))));
+        }
+      });
+    },
+  };
+}

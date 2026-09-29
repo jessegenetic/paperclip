@@ -17,6 +17,8 @@ import {
   executionWorkspaces,
   heartbeatRunEvents,
   heartbeatRuns,
+  providerAdmissionPools,
+  providerDispatchReceipts,
   issueRelations,
   issues,
   projects,
@@ -250,6 +252,75 @@ describeEmbeddedPostgres("heartbeat bounded retry scheduling", () => {
     });
   }
 
+  it("parks a direct manual invocation before adapter entry while the shared pool is cooling", async () => {
+    const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
+    const now = new Date(), reset = new Date(now.getTime() + 86_400_000);
+    await seedRetryFixture({ runId, companyId, agentId, now, errorCode: "provider_quota", adapterType: PROVIDER_QUOTA_TEST_ADAPTER });
+    await db.insert(providerAdmissionPools).values({ companyId, poolKey: "company-runtime-accounts:v1", cooldownUntil: reset });
+    const run = await heartbeat.invoke(agentId, "on_demand", { message: "Keep owner approval. Do not deploy." }, "manual");
+    expect(run).not.toBeNull();
+    await heartbeat.drainActiveRunExecutions();
+    const parked = await heartbeat.getRun(run!.id);
+    expect(parked).toMatchObject({ status: "scheduled_retry", scheduledRetryAt: reset, startedAt: null, errorCode: null });
+    expect((await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, run!.id)))[0])
+      .toMatchObject({ admittedAt: null, suppressionCount: 1 });
+    const [wake] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, parked!.wakeupRequestId!));
+    expect(parked?.contextSnapshot).toMatchObject({ message: "Keep owner approval. Do not deploy." });
+    expect(wake?.status).toBe("queued");
+  });
+
+  it("rechecks after preparation and parks without calling the adapter or consuming a slot", async () => {
+    const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
+    const now = new Date(), reset = new Date(now.getTime() + 86_400_000);
+    await seedRetryFixture({ runId, companyId, agentId, now, errorCode: "provider_quota", adapterType: PROVIDER_QUOTA_TEST_ADAPTER });
+    let checks = 0;
+    const racing = heartbeatService(db, {
+      beforeProviderAdmissionCheck: async () => {
+        checks++;
+        await db.insert(providerAdmissionPools).values({ companyId, poolKey: "company-runtime-accounts:v1", cooldownUntil: reset })
+          .onConflictDoUpdate({ target: [providerAdmissionPools.companyId, providerAdmissionPools.poolKey], set: { cooldownUntil: reset } });
+      },
+    });
+    const run = await racing.invoke(agentId, "on_demand", { message: "Keep approval gates." }, "manual");
+    await racing.drainActiveRunExecutions();
+    expect(checks).toBe(1);
+    expect(await racing.getRun(run!.id)).toMatchObject({ status: "scheduled_retry", scheduledRetryAt: reset,
+      errorCode: null, startedAt: null, contextSnapshot: { message: "Keep approval gates." } });
+    const [receipt] = await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, run!.id));
+    expect(receipt).toMatchObject({ admittedAt: null, outcome: null, suppressionCount: 1 });
+    const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
+    expect(agent?.status).toBe("idle");
+    expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.retryOfRunId, run!.id))).toHaveLength(0);
+  });
+
+  it("persists provider jitter across duplicate scheduling and service restart", async () => {
+    const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
+    const now = new Date("2026-09-29T12:00:00Z");
+    await seedRetryFixture({ runId, companyId, agentId, now, errorCode: "overloaded", errorFamily: "transient_upstream" });
+    const first = await heartbeat.scheduleBoundedRetry(runId, { now, random: () => 0 });
+    expect(first.outcome).toBe("scheduled");
+    if (first.outcome !== "scheduled") throw new Error("Expected retry");
+    expect(first.run.scheduledRetryAt?.getTime()).toBe(now.getTime() + 240_000);
+    const restarted = heartbeatService(db);
+    const duplicate = await restarted.scheduleBoundedRetry(runId, { now: new Date(now.getTime() + 60_000), random: () => 1 });
+    expect(duplicate.outcome).toBe("scheduled");
+    if (duplicate.outcome !== "scheduled") throw new Error("Expected retry");
+    expect(duplicate.run.id).toBe(first.run.id);
+    expect(duplicate.run.scheduledRetryAt).toEqual(first.run.scheduledRetryAt);
+    expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.retryOfRunId, runId))).toHaveLength(1);
+  });
+
+  it("doubles provider delay from the stored attempt and ignores a shorter override", async () => {
+    const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
+    const now = new Date("2026-09-29T12:00:00Z");
+    await seedRetryFixture({ runId, companyId, agentId, now, errorCode: "provider_quota", errorFamily: "provider_quota", scheduledRetryAttempt: 1 });
+    const scheduled = await heartbeatService(db).scheduleBoundedRetry(runId, { now, random: () => 0.5, delayMs: 1_000 });
+    expect(scheduled.outcome).toBe("scheduled");
+    if (scheduled.outcome !== "scheduled") throw new Error("Expected retry");
+    expect(scheduled.run.scheduledRetryAttempt).toBe(2);
+    expect(scheduled.run.scheduledRetryAt?.getTime()).toBe(now.getTime() + 600_000);
+  });
+
   it("reuses one failure successor across concurrent and repeated scheduling", async () => {
     const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
     const now = new Date("2026-04-20T12:00:00.000Z");
@@ -317,6 +388,20 @@ describeEmbeddedPostgres("heartbeat bounded retry scheduling", () => {
     const failedRun = await waitForRunToFinish(heartbeat, run!.id);
     expect(failedRun?.status).toBe("failed");
     expect(failedRun?.errorCode).toBe("provider_quota");
+    const [receipt] = await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, run!.id));
+    expect(receipt?.admittedAt).toBeInstanceOf(Date);
+    expect(receipt).toMatchObject({ outcome: "provider_quota" });
+    const [pool] = await db.select().from(providerAdmissionPools).where(eq(providerAdmissionPools.companyId, companyId));
+    expect(pool?.cooldownUntil?.toISOString()).toBe("2030-04-22T21:00:00.000Z");
+    // A fresh manual wake after service reconstruction observes the failure
+    // floor even though it is unrelated to the automatic retry chain.
+    await heartbeat.drainActiveRunExecutions();
+    const restarted = heartbeatService(db);
+    const fresh = await restarted.invoke(agentId, "on_demand", { message: "Owner direction stays queued." }, "manual");
+    await restarted.drainActiveRunExecutions();
+    expect(await restarted.getRun(fresh!.id)).toMatchObject({ status: "scheduled_retry",
+      contextSnapshot: { message: "Owner direction stays queued." }, errorCode: null });
+
     expect((failedRun?.resultJson as Record<string, unknown> | null)?.errorFamily).toBe("provider_quota");
 
     await expect
