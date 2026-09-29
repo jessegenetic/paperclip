@@ -32,6 +32,17 @@ describe("durable provider admission (disposable Postgres, no providers)", () =>
     return { companyId, agentId, issueId, run };
   }
 
+  it("checks queued eligibility without spending slots, then parks at the cap", async () => {
+    const f = await fixture(), id = await f.run(false, {}, "queued");
+    const checks = await Promise.all(Array.from({ length: 12 }, () => providerAdmissionService(db)
+      .reserve(f.companyId, id, now, { checkOnly: true, parkDeniedRun: true })));
+    expect(checks.every((result) => result.kind === "eligible")).toBe(true);
+    expect(await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, id))).toHaveLength(0);
+    for (let index = 0; index < 4; index++) await providerAdmissionService(db).reserve(f.companyId, await f.run(), now);
+    expect((await providerAdmissionService(db).reserve(f.companyId, id, now, { checkOnly: true, parkDeniedRun: true })).kind).toBe("deferred");
+    expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, id)))[0]?.status).toBe("scheduled_retry");
+  });
+
   it("reserves a run once across 16 concurrent schedulers and a service restart", async () => {
     const f = await fixture(), id = await f.run();
     const results = await Promise.all(Array.from({ length: 16 }, () => providerAdmissionService(db).reserve(f.companyId, id, now)));

@@ -8,7 +8,7 @@ import { computeProviderRetrySchedule } from "./provider-retry-policy.js";
 type AdmissionTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 export const PROVIDER_ADMISSION_RETRY_REASON = "provider_admission";
 
-async function dispatchWindow(tx: AdmissionTransaction, companyId: string, issueId: string | null, now: Date) {
+async function dispatchWindow(tx: Pick<AdmissionTransaction, "select">, companyId: string, issueId: string | null, now: Date) {
   if (!issueId) return [];
   const rows = await tx.select({ at: providerDispatchReceipts.admittedAt })
     .from(providerDispatchReceipts).where(and(
@@ -29,10 +29,30 @@ async function lockPool(tx: AdmissionTransaction, companyId: string, now: Date) 
   return pool;
 }
 
+/** Read-only timer floor inside the scheduler's issue/run transaction. Do not
+ * acquire the pool lock here: admission uses pool -> run while the scheduler
+ * uses issue -> run. A concurrent failure can extend this floor after the read;
+ * the queued preflight and final dispatch reservation must recheck it. */
+export async function deferredProviderEligibility(
+  db: Pick<AdmissionTransaction, "select">, companyId: string, runId: string, now: Date,
+) {
+  const [receipt] = await db.select().from(providerDispatchReceipts).where(and(
+    eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.runId, runId),
+  ));
+  if (!receipt || receipt.admittedAt) return null;
+  const [pool] = await db.select().from(providerAdmissionPools).where(and(
+    eq(providerAdmissionPools.companyId, companyId), eq(providerAdmissionPools.poolKey, receipt.poolKey),
+  ));
+  const decision = providerAdmissionEligibility({ now, cooldownUntil: pool?.cooldownUntil ?? null,
+    automated: receipt.automated,
+    automatedDispatches: await dispatchWindow(db, companyId, receipt.issueId, now) });
+  return new Date(Math.max(decision.eligibleAt.getTime(), receipt.eligibleAt.getTime()));
+}
+
 /** Every decision and its receipt commit together. No provider work runs in this transaction. */
 export function providerAdmissionService(db: Db) {
   return {
-    async reserve(companyId: string, runId: string, now = new Date(), options: { parkDeniedRun?: boolean } = {}) {
+    async reserve(companyId: string, runId: string, now = new Date(), options: { parkDeniedRun?: boolean; checkOnly?: boolean } = {}) {
       return db.transaction(async (tx) => {
         const pool = await lockPool(tx, companyId, now);
         const [run] = await tx.select().from(heartbeatRuns).where(and(
@@ -41,7 +61,7 @@ export function providerAdmissionService(db: Db) {
         if (!run || !["queued", "running"].includes(run.status)) return { kind: "stale" as const };
         // Parking belongs before claim/startup. Never erase ownership of a
         // running native or legacy process merely because its pool is cooling.
-        if (options.parkDeniedRun && run.status !== "queued") return { kind: "stale" as const };
+        if ((options.parkDeniedRun || options.checkOnly) && run.status !== "queued") return { kind: "stale" as const };
         // Resolve authority from persisted runtime records; wake JSON never selects an account or exemption.
         const [agent] = await tx.select({ id: agents.id }).from(agents).where(and(
           eq(agents.companyId, companyId), eq(agents.id, run.agentId),
@@ -65,6 +85,9 @@ export function providerAdmissionService(db: Db) {
         if (existing?.admittedAt) return { kind: "duplicate" as const };
         const decision = providerAdmissionEligibility({ now, cooldownUntil: pool.cooldownUntil,
           automated, automatedDispatches: await dispatchWindow(tx, companyId, issue?.id ?? null, now) });
+        // Preflight does not consume a dispatch slot. The final provider
+        // handoff must still reserve after preparation and ownership checks.
+        if (decision.eligible && options.checkOnly) return { kind: "eligible" as const };
         const values = { companyId, runId, issueId: issue?.id ?? null, poolKey: SHARED_PROVIDER_POOL,
           automated, admittedAt: decision.eligible ? now : null, eligibleAt: decision.eligibleAt,
           suppressionCount: (existing?.suppressionCount ?? 0) + (decision.eligible ? 0 : 1),

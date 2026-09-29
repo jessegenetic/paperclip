@@ -1,8 +1,10 @@
 # Durable provider admission (implementation in progress)
 
-This increment adds a database-backed admission service and tests. It is not yet
-connected to heartbeat dispatch. It does not currently block runtime provider
-calls. Do not adopt this draft as a complete burn-control fix.
+This increment adds a database-backed admission service, queued-run preflight,
+and a scheduler promotion floor. Known pool deadlines now park queued runs
+before resource claims. Final provider entry and failure settlement are not yet
+wired, so live failures do not populate these pools. Do not adopt this draft as
+a complete burn-control fix.
 
 ## Admission contract
 
@@ -53,8 +55,18 @@ Cancellation and company boundaries remain effective.
 Queueing does not grant provider permission. Runtime integration must apply its
 normal pause, budget, assignment, ownership and dependency gates, then reserve
 again at the dispatch boundary. Another failure or dispatch can make a queued
-run ineligible after the timer check. These service methods are not yet wired
-into the runtime scheduler. Distinct wake coalescing still needs integration.
+run ineligible after the timer check. The runtime scheduler uses its existing issue/run transaction and policy gates
+plus `deferredProviderEligibility` to check the saved floor. This read does not
+take a pool lock inside the issue/run locks, avoiding inversion of admission's
+pool/run lock order. A concurrent failure can extend the floor after the read;
+the queued preflight checks again. Distinct wake coalescing still needs integration.
+
+`reserve(..., { checkOnly: true, parkDeniedRun: true })` is the queued preflight.
+It parks denials atomically, but eligible checks create no receipt and consume no
+slot. `claimQueuedRun` uses this after its existing scheduling gates. This is
+only an early resource-saving check. The final provider handoff must reserve
+again, including native replacements; active native reattachment is a separate
+ownership operation.
 
 ## Local burn-report data contract
 
@@ -86,9 +98,9 @@ ranges are not independently verified by these receipts.
 
 - Integrate checks at dispatch for legacy, native, direct, scheduled and restart
   paths. Resolve trusted credential identity before considering finer pools.
-- Wire the tested atomic deferral and resume methods into the scheduler. Preserve
-  queued human directions and existing issue coalescing. Timers must not launch
-  LLMs to check eligibility.
+- Complete final dispatch deferral and distinct-wake coalescing. Queued preflight
+  and scheduled promotion are wired; active ownership and post-preparation
+  races still need coverage. Timers must not launch LLMs to check eligibility.
 - Keep native reattachment distinct from new provider work. A reservation alone
   cannot prove whether a process started before a crash. Retain existing
   ownership/reconciliation guards; never replay uncertain provider work.

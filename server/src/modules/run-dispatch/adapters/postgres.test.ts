@@ -1,3 +1,4 @@
+import { providerAdmissionService } from "../../../services/provider-admission.js";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -10,6 +11,8 @@ import {
   documents,
   heartbeatRunEvents,
   heartbeatRuns,
+  providerAdmissionPools,
+  providerDispatchReceipts,
   issueDocuments,
   issueRelations,
   issueRecoveryActions,
@@ -735,6 +738,29 @@ describeEmbeddedPostgres("run-dispatch postgres adapter", () => {
       expect(outcome.outcome).toBe("promoted");
       const [row] = await db.select({ status: heartbeatRuns.status }).from(heartbeatRuns).where(eq(heartbeatRuns.id, runId));
       expect(row?.status).toBe("queued");
+    });
+
+    it("keeps a shortened timer parked at the shared floor and promotes once after restart", async () => {
+      const { companyId, agentId } = await seedCompanyAndAgent();
+      const issueId = randomUUID(), runId = randomUUID();
+      const now = new Date("2030-01-01T12:00:00Z"), reset = new Date("2030-01-05T12:00:00Z");
+      await seedIssue({ companyId, issueId, status: "in_progress", assigneeAgentId: agentId });
+      await seedScheduledRetryRun({ runId, companyId, agentId, issueId, now });
+      await db.update(heartbeatRuns).set({ status: "queued" }).where(eq(heartbeatRuns.id, runId));
+      await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
+      await db.insert(providerAdmissionPools).values({ companyId, poolKey: "company-runtime-accounts:v1", cooldownUntil: reset });
+      await providerAdmissionService(db).reserve(companyId, runId, now, { checkOnly: true, parkDeniedRun: true });
+      // Retry-now edits only the timer. The receipt remains the durable floor.
+      await db.update(heartbeatRuns).set({ scheduledRetryAt: now }).where(eq(heartbeatRuns.id, runId));
+      const adapter = createPostgresRunDispatchAdapter(db);
+      expect((await adapter.promoteOrCancelDueRetry({ companyId, runId, now })).outcome).toBe("not_promoted");
+      expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId)))[0])
+        .toMatchObject({ status: "scheduled_retry", scheduledRetryAt: reset, scheduledRetryAttempt: 1 });
+      const results = await Promise.all(Array.from({ length: 8 }, () => createPostgresRunDispatchAdapter(db)
+        .promoteOrCancelDueRetry({ companyId, runId, now: reset })));
+      expect(results.filter((r) => r.outcome === "promoted")).toHaveLength(1);
+      expect((await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, runId)))[0])
+        .toMatchObject({ admittedAt: null, suppressionCount: 1 });
     });
 
     it("cancels a due retry a pause hold blocks", async () => {

@@ -17,6 +17,8 @@ import {
   executionWorkspaces,
   heartbeatRunEvents,
   heartbeatRuns,
+  providerAdmissionPools,
+  providerDispatchReceipts,
   issueRelations,
   issues,
   projects,
@@ -249,6 +251,23 @@ describeEmbeddedPostgres("heartbeat bounded retry scheduling", () => {
       createdAt: input.now,
     });
   }
+
+  it("parks a direct manual invocation before adapter entry while the shared pool is cooling", async () => {
+    const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
+    const now = new Date(), reset = new Date(now.getTime() + 86_400_000);
+    await seedRetryFixture({ runId, companyId, agentId, now, errorCode: "provider_quota", adapterType: PROVIDER_QUOTA_TEST_ADAPTER });
+    await db.insert(providerAdmissionPools).values({ companyId, poolKey: "company-runtime-accounts:v1", cooldownUntil: reset });
+    const run = await heartbeat.invoke(agentId, "on_demand", { message: "Keep owner approval. Do not deploy." }, "manual");
+    expect(run).not.toBeNull();
+    await heartbeat.drainActiveRunExecutions();
+    const parked = await heartbeat.getRun(run!.id);
+    expect(parked).toMatchObject({ status: "scheduled_retry", scheduledRetryAt: reset, startedAt: null, errorCode: null });
+    expect((await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, run!.id)))[0])
+      .toMatchObject({ admittedAt: null, suppressionCount: 1 });
+    const [wake] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, parked!.wakeupRequestId!));
+    expect(parked?.contextSnapshot).toMatchObject({ message: "Keep owner approval. Do not deploy." });
+    expect(wake?.status).toBe("queued");
+  });
 
   it("persists provider jitter across duplicate scheduling and service restart", async () => {
     const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();

@@ -1,3 +1,4 @@
+import { providerAdmissionService } from "./provider-admission.js";
 import { computeProviderRetrySchedule } from "./provider-retry-policy.js";
 import { externalConversationStateSql, nonIdleSlackIssueCondition } from "./slack-conversation-state.js";
 import { settleSlackConversation } from "./slack-conversation-lifecycle.js";
@@ -9486,6 +9487,7 @@ export function heartbeatService(
     },
   });
   const runDispatch = createRunDispatch(db);
+  const providerAdmission = providerAdmissionService(db);
 
   // Applies the post-commit effects a run-dispatch operation returns, on a
   // best-effort basis, exactly as this service publishes them for every
@@ -17301,6 +17303,13 @@ export function heartbeatService(
         return null;
       }
     }
+
+    // Check before claiming runtime resources. This is not dispatch permission:
+    // another run can extend the cooldown while this run prepares its workspace.
+    const admission = await providerAdmission.reserve(run.companyId, run.id, new Date(), {
+      checkOnly: true, parkDeniedRun: true,
+    });
+    if (admission.kind !== "eligible") return null;
 
     const claimedAt = new Date();
     const responsibleUserId = await resolveResponsibleUserIdForRun({
