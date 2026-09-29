@@ -384,6 +384,7 @@ export async function buildExecutionContinuation(input: {
     },
     originCommentIds,
     objective: latestRequest?.body ?? issue.description ?? issue.title,
+    objectiveSource: latestRequest ? "human_comment" : issue.description != null ? "issue_description" : "issue_title",
     messages,
     humanResponses: interactions.flatMap(row => {
       const response = projectHumanInteractionResponse(row);

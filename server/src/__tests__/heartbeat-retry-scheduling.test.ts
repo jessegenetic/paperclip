@@ -250,6 +250,34 @@ describeEmbeddedPostgres("heartbeat bounded retry scheduling", () => {
     });
   }
 
+  it("persists provider jitter across duplicate scheduling and service restart", async () => {
+    const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
+    const now = new Date("2026-09-29T12:00:00Z");
+    await seedRetryFixture({ runId, companyId, agentId, now, errorCode: "overloaded", errorFamily: "transient_upstream" });
+    const first = await heartbeat.scheduleBoundedRetry(runId, { now, random: () => 0 });
+    expect(first.outcome).toBe("scheduled");
+    if (first.outcome !== "scheduled") throw new Error("Expected retry");
+    expect(first.run.scheduledRetryAt?.getTime()).toBe(now.getTime() + 240_000);
+    const restarted = heartbeatService(db);
+    const duplicate = await restarted.scheduleBoundedRetry(runId, { now: new Date(now.getTime() + 60_000), random: () => 1 });
+    expect(duplicate.outcome).toBe("scheduled");
+    if (duplicate.outcome !== "scheduled") throw new Error("Expected retry");
+    expect(duplicate.run.id).toBe(first.run.id);
+    expect(duplicate.run.scheduledRetryAt).toEqual(first.run.scheduledRetryAt);
+    expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.retryOfRunId, runId))).toHaveLength(1);
+  });
+
+  it("doubles provider delay from the stored attempt and ignores a shorter override", async () => {
+    const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
+    const now = new Date("2026-09-29T12:00:00Z");
+    await seedRetryFixture({ runId, companyId, agentId, now, errorCode: "provider_quota", errorFamily: "provider_quota", scheduledRetryAttempt: 1 });
+    const scheduled = await heartbeatService(db).scheduleBoundedRetry(runId, { now, random: () => 0.5, delayMs: 1_000 });
+    expect(scheduled.outcome).toBe("scheduled");
+    if (scheduled.outcome !== "scheduled") throw new Error("Expected retry");
+    expect(scheduled.run.scheduledRetryAttempt).toBe(2);
+    expect(scheduled.run.scheduledRetryAt?.getTime()).toBe(now.getTime() + 600_000);
+  });
+
   it("reuses one failure successor across concurrent and repeated scheduling", async () => {
     const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
     const now = new Date("2026-04-20T12:00:00.000Z");

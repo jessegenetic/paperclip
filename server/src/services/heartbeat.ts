@@ -1,3 +1,4 @@
+import { computeProviderRetrySchedule } from "./provider-retry-policy.js";
 import { externalConversationStateSql, nonIdleSlackIssueCondition } from "./slack-conversation-state.js";
 import { settleSlackConversation } from "./slack-conversation-lifecycle.js";
 import { publicChatTaskUrl } from "./chat-task-url.js";
@@ -15228,33 +15229,34 @@ export function heartbeatService(
       retryReason === MAX_TURN_CONTINUATION_RETRY_REASON
         ? (run.scheduledRetryAttempt ?? 0)
         : executionFailureRetryCount(run)) + 1;
-    const computedBaseSchedule =
-      opts?.delayMs != null
+    const transientRecovery =
+      retryReason === BOUNDED_TRANSIENT_HEARTBEAT_RETRY_REASON
+        ? readTransientRecoveryContractFromRun(run)
+        : null;
+    const computedBaseSchedule = transientRecovery
+      ? computeProviderRetrySchedule({
+          attempt: nextAttempt,
+          maxAttempts,
+          now,
+          retryNotBefore: transientRecovery.retryNotBefore,
+          random: opts?.random,
+        })
+      : opts?.delayMs != null
         ? nextAttempt <= maxAttempts
           ? {
               attempt: nextAttempt,
               baseDelayMs: Math.max(0, Math.floor(opts.delayMs)),
               delayMs: Math.max(0, Math.floor(opts.delayMs)),
-              dueAt: new Date(
-                now.getTime() + Math.max(0, Math.floor(opts.delayMs)),
-              ),
+              dueAt: new Date(now.getTime() + Math.max(0, Math.floor(opts.delayMs))),
               maxAttempts,
             }
           : null
         : nextAttempt <= maxAttempts
-          ? computeBoundedTransientHeartbeatRetrySchedule(
-              nextAttempt,
-              now,
-              opts?.random,
-            )
+          ? computeBoundedTransientHeartbeatRetrySchedule(nextAttempt, now, opts?.random)
           : null;
     const baseSchedule = computedBaseSchedule
       ? { ...computedBaseSchedule, maxAttempts }
       : null;
-    const transientRecovery =
-      retryReason === BOUNDED_TRANSIENT_HEARTBEAT_RETRY_REASON
-        ? readTransientRecoveryContractFromRun(run)
-        : null;
     const codexTransientFallbackMode =
       agent.adapterType === "codex_local" &&
       transientRecovery?.errorFamily === "transient_upstream"
