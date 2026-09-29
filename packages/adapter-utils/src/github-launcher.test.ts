@@ -82,6 +82,51 @@ describe("managed GitHub launchers", () => {
     expect(result.stderr).toContain("More than one managed GitHub identity matches this run");
     expect(result.stderr).not.toMatch(/host-token|must-not-be-used|run-capability/);
   });
+  it("still delivers a resolved credential when the scratch configuration directory is unusable", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "paperclip-github-degraded-"));
+    cleanups.push(() => rm(root, { recursive: true, force: true }));
+    const bin = path.join(root, "managed"), realBin = path.join(root, "real");
+    await mkdir(bin); await mkdir(realBin);
+    await writeFile(path.join(bin, "gh"), githubLauncherSource(), { mode: 0o700 });
+    await writeFile(path.join(realBin, "gh"),
+      '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({token:process.env.GH_TOKEN ?? null,config:process.env.GH_CONFIG_DIR}));',
+      { mode: 0o700 });
+    const server = createServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ status: "available", env: { GH_TOKEN: "credential-A" } }));
+    });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    cleanups.push(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
+    const { port } = server.address() as { port: number };
+    // A file on the config path is the shape a sandbox-refused or non-directory
+    // scratch root presents: mkdir throws and no directory can be created.
+    const configRoot = path.join(root, "config");
+    await writeFile(configRoot, "not a directory");
+    const run = async () => {
+      const result = await exec(path.join(bin, "gh"), [], { env: {
+        ...process.env, ...githubBrokerEnvironment({ GH_TOKEN: "host-must-not-leak" }, { url: `http://127.0.0.1:${port}`, token: "run-capability" }),
+        GH_CONFIG_DIR: configRoot, PATH: `${bin}:${realBin}:${process.env.PATH}`,
+      } });
+      return { parsed: JSON.parse(result.stdout), stderr: result.stderr };
+    };
+    const first = await run();
+    // The directory is genuinely unavailable, and the diagnostic names the errno.
+    // The errno is what distinguishes a sandbox refusal from a full disk or a
+    // non-directory, so assert it is attached rather than pinning one platform's
+    // code (a file on the path reports EEXIST here, EPERM under a sandbox).
+    expect(first.stderr).toMatch(/configuration_directory_unavailable \(E[A-Z]+\)/);
+    // The credential is carried by the environment and must survive regardless.
+    expect(first.parsed.token).toBe("credential-A");
+    expect(first.stderr).not.toMatch(/host-must-not-leak|run-capability|credential-A/);
+    // Isolation still holds in the degraded path: gh is steered away from the
+    // host configuration, and two operations do not share one directory.
+    expect(first.parsed.config).not.toBe(configRoot);
+    expect(first.parsed.config).toMatch(/[\\/]unavailable-gh-config-\d+$/);
+    const second = await run();
+    expect(second.parsed.token).toBe("credential-A");
+    expect(second.parsed.config).not.toBe(first.parsed.config);
+  });
+
   it("captures each command's identity and clears host credentials when the next person has none", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "paperclip-github-launcher-test-"));
     cleanups.push(() => rm(root, { recursive: true, force: true }));

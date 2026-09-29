@@ -23,15 +23,23 @@ async function main() {
   const configRoot = env.GH_CONFIG_DIR || os.tmpdir();
   // A missing/unwritable scratch directory must not break local Git. The
   // fallback deliberately cannot load the host's gh authentication files.
-  let configDirectory = path.join(directory, 'unavailable-gh-config');
-  let configReady = false;
+  // It is per-process because this path now carries a credential: two
+  // concurrent operations must not share one gh configuration directory,
+  // which is the same isolation mkdtemp gives the successful path.
+  let configDirectory = path.join(directory, 'unavailable-gh-config-' + process.pid);
+  process.once('exit', () => { try { fs.rmSync(configDirectory, { recursive: true, force: true }); } catch {} });
   try {
     fs.mkdirSync(configRoot, { recursive: true, mode: 0o700 });
     configDirectory = fs.mkdtempSync(path.join(configRoot, 'paperclip-github-operation-'));
     fs.chmodSync(configDirectory, 0o700);
-    configReady = true;
-    process.once('exit', () => { try { fs.rmSync(configDirectory, { recursive: true, force: true }); } catch {} });
-  } catch { diagnostic('configuration_directory_unavailable'); }
+  } catch (error) {
+    // Report the errno. This directory is refused by sandbox policy (EPERM),
+    // by a non-directory on the path (ENOTDIR) and by a full disk (ENOSPC),
+    // and the bare code alone left those indistinguishable -- so the one
+    // question an operator needs answered took a source read to even frame.
+    diagnostic('configuration_directory_unavailable'
+      + (error && typeof error.code === 'string' ? ' (' + error.code + ')' : ''));
+  }
   {
     for (const key of Object.keys(env)) {
       if (/^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GITHUB_ENTERPRISE_TOKEN|PAPERCLIP_GIT_TOKEN|GIT_AUTHOR_.*|GIT_COMMITTER_.*|GIT_CONFIG_.*|GIT_ASKPASS|SSH_ASKPASS|SSH_AUTH_SOCK|GIT_SSH.*)$/.test(key)) delete env[key];
@@ -75,7 +83,16 @@ async function main() {
           : 'Check the GitHub connection in Paperclip';
         process.stderr.write('Paperclip: GitHub access unavailable: ' + reason + '. Continuing without GitHub credentials.\n');
       }
-      if (result.status === 'available' && configReady) {
+      // The managed credential is carried entirely by the environment: gh reads
+      // GH_TOKEN, and Git authenticates through the inline credential.helper
+      // below, which reads PAPERCLIP_GIT_TOKEN. Neither needs the scratch
+      // directory, which exists only to keep gh from loading the host's config.
+      // Gating this on that directory turned an unwritable temp path into a
+      // total loss of GitHub access -- reported as an unauthenticated CLI with
+      // no hint that the credential itself had resolved. Isolation is unchanged:
+      // GH_CONFIG_DIR still points away from the host config either way, and the
+      // inherited credentials were deleted above regardless of this branch.
+      if (result.status === 'available') {
         for (const [key, value] of Object.entries(result.env || {})) {
           if (/^(GH_TOKEN|GITHUB_TOKEN|PAPERCLIP_GIT_TOKEN|GIT_TERMINAL_PROMPT|GIT_AUTHOR_(NAME|EMAIL)|GIT_COMMITTER_(NAME|EMAIL)|GIT_CONFIG_COUNT|GIT_CONFIG_(KEY|VALUE)_\d+)$/.test(key) && typeof value === 'string') env[key] = value;
         }
