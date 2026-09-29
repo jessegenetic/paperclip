@@ -1,4 +1,4 @@
-import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { type Db, agents, agentWakeupRequests, heartbeatRuns, issues,
   providerAdmissionPools, providerDispatchReceipts } from "@paperclipai/db";
 import { AUTOMATED_ISSUE_DISPATCH_WINDOW_MS, SHARED_PROVIDER_POOL,
@@ -91,7 +91,7 @@ export function providerAdmissionService(db: Db) {
           // An older in-flight success must never clear a later failure's reset floor.
           await tx.update(providerAdmissionPools).set({ consecutiveFailures: 0, updatedAt: now })
             .where(and(eq(providerAdmissionPools.companyId, input.companyId), eq(providerAdmissionPools.poolKey, SHARED_PROVIDER_POOL),
-              sql`(${providerAdmissionPools.cooldownUntil} is null or ${providerAdmissionPools.cooldownUntil} <= ${now})`));
+              or(isNull(providerAdmissionPools.cooldownUntil), lte(providerAdmissionPools.cooldownUntil, now))));
         }
       });
     },
