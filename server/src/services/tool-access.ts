@@ -7199,8 +7199,37 @@ export function toolAccessService(
           throw unprocessable("GitHub authorization must be connected", {
             code: "oauth_reauthorization_required",
           });
-        for (const grant of grantsToCheck)
-          await refreshManagedGitHubGrantAccess(connection, grant, actor);
+        // Grants on one connection are independent identities: a `per_user`
+        // GitHub connection carries a grant per operator plus any agent grants
+        // created by standing delegation. A refusal scoped to a single grant is
+        // therefore not evidence about the connection's own credential
+        // material, and must not reach `updateConnectionHealth` -- any
+        // attention health blanks `usableConnectionForAgent` for *every* agent
+        // on the connection (`connection-intents.ts`), which is how one stale
+        // grant manufactures a connection-wide false "needs user action".
+        // The per-grant signal is preserved where it belongs: a grant that
+        // truly needs reauthorization is marked on `connectionGrants.status`.
+        let refreshedAnyGrant = false;
+        let firstGrantFailure: unknown;
+        for (const grant of grantsToCheck) {
+          try {
+            await refreshManagedGitHubGrantAccess(connection, grant, actor);
+            refreshedAnyGrant = true;
+          } catch (error) {
+            // `github_access_changed` is a caller-visible reconciliation
+            // signal, not a health verdict; the outer catch re-throws it
+            // without touching health, so preserve that here too.
+            if (
+              error instanceof HttpError &&
+              asRecord(error.details).code === "github_access_changed"
+            )
+              throw error;
+            firstGrantFailure ??= error;
+          }
+        }
+        // Only when no grant at all can be refreshed is the connection itself
+        // unusable, and only then may this write connection-level health.
+        if (!refreshedAnyGrant) throw firstGrantFailure;
       } else if (isAgentMailConnection(connection)) {
         await validateAgentMailConnection(connection);
       } else if (connection.transport === "mcp_remote") {
@@ -10743,11 +10772,25 @@ export function toolAccessService(
         latestVersion: secret.latestVersion,
       };
     }
+    if (grant.kind === "user" && !grant.subjectUserId) {
+      throw unprocessable("Personal authorization has no owner", {
+        code: "grant_owner_missing",
+        connectionId: connection.id,
+        grantId: grant.id,
+        credential: ref.configPath,
+      });
+    }
+    // Which resolution path applies is a property of the secret, not of the
+    // grant: a dedicated agent grant can carry an operator's user-scoped
+    // credential via standing delegation. This predicate must stay identical to
+    // the runtime one in `tool-gateway.ts` (`resolveGrantSecretValue`) -- when
+    // the health probe is stricter than the runtime, every sweep writes a
+    // connection-level `grant_credential_invalid` for a grant the runtime is
+    // happily using, and that blanks readiness for *every* agent.
     if (
-      grant.kind !== "user" ||
-      !grant.subjectUserId ||
-      secret.ownerUserId !== grant.subjectUserId ||
-      !secret.userSecretDefinitionId
+      !secret.ownerUserId ||
+      !secret.userSecretDefinitionId ||
+      (grant.kind === "user" && secret.ownerUserId !== grant.subjectUserId)
     ) {
       throw unprocessable("Personal authorization has an invalid credential", {
         code: "grant_credential_invalid",
@@ -10756,11 +10799,40 @@ export function toolAccessService(
         credential: ref.configPath,
       });
     }
+    if (secret.ownerUserId !== grant.subjectUserId) {
+      // The grant is borrowing someone else's personal credential. A `user`
+      // grant's own subject is vetted where the grant is selected; an owner
+      // reached this way is not, so hold the borrowed identity to the same
+      // membership bar rather than letting it outlive the owner's access.
+      const [member] = await db
+        .select({ role: companyMemberships.membershipRole })
+        .from(companyMemberships)
+        .where(
+          and(
+            eq(companyMemberships.companyId, connection.companyId),
+            eq(companyMemberships.principalType, "user"),
+            eq(companyMemberships.principalId, secret.ownerUserId),
+            eq(companyMemberships.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!member || member.role === "viewer") {
+        throw forbidden(
+          "The personal grant owner is not an authorized company member",
+          {
+            code: "grant_owner_membership_inactive",
+            connectionId: connection.id,
+            grantId: grant.id,
+            credential: ref.configPath,
+          },
+        );
+      }
+    }
     const resolved = await secrets.resolveUserSecretValue(
       connection.companyId,
       {
         definitionId: secret.userSecretDefinitionId,
-        responsibleUserId: grant.subjectUserId,
+        responsibleUserId: secret.ownerUserId,
         version: ref.versionSelector ?? "latest",
         required: ref.required ?? true,
       },

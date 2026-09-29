@@ -7665,6 +7665,230 @@ describeEmbeddedPostgres("tool access service", () => {
     }
   });
 
+  describe("managed GitHub health does not blank readiness for every agent", () => {
+    /**
+     * Build the shape a delegated GitHub connection actually has in production:
+     * one `per_user` managed connection carrying an active personal grant plus
+     * an active agent grant that borrows the operator's user-scoped credential.
+     */
+    async function connectSharedGitHubIdentity() {
+      const company = await createCompany(db);
+      const userId = `github-shared-${randomUUID()}`;
+      await grantBoardUser(db, company.id, userId, [], "owner");
+      const agent = await createAgent(db, company.id);
+      const connector = fakeGitHubConnector(company.id, `user:${userId}`);
+      const originalClaim = connector.claim;
+      connector.claim = vi.fn(async (input) => ({
+        ...(await originalClaim(input)),
+        subject: input.subject,
+      }));
+      const service = createTestToolAccessService(db, {
+        paperclipCloudConnector: connector,
+      });
+      const actor = { actorType: "user" as const, actorId: userId };
+      const githubDefinition = getConnectableAppDefinition("github")!;
+      const previousOwnershipAvailability =
+        githubDefinition.ownershipAvailability;
+      githubDefinition.ownershipAvailability = {
+        ...previousOwnershipAvailability,
+        platform_shared: true,
+      };
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+        const href = String(url);
+        if (href === "https://api.github.com/user") {
+          return mcpHttpResponse({
+            id: 42,
+            login: "octocat",
+            avatar_url: "https://avatars.example/octocat",
+          });
+        }
+        if (href.includes("https://api.github.com/user/installations?")) {
+          return mcpHttpResponse({
+            installations: [
+              {
+                id: 101,
+                repository_selection: "selected",
+                html_url: "https://github.com/settings/installations/101",
+                account: { login: "paperclipai" },
+              },
+            ],
+          });
+        }
+        if (
+          href.includes(
+            "https://api.github.com/user/installations/101/repositories?",
+          )
+        ) {
+          return mcpHttpResponse({
+            total_count: 1,
+            repositories: [{ id: 1, full_name: "paperclipai/repo-1" }],
+          });
+        }
+        if (href === GITHUB_CONNECTOR_PROFILES["github.code"].serverUrl) {
+          return mcpHttpResponse({
+            jsonrpc: "2.0",
+            id: "paperclip-catalog-refresh",
+            result: {
+              tools: [
+                {
+                  name: "get_pull_request",
+                  annotations: { readOnlyHint: true },
+                },
+              ],
+            },
+          });
+        }
+        throw new Error(`unexpected fetch ${href}`);
+      });
+      const connected = await service.connectGalleryApp(
+        company.id,
+        {
+          galleryKey: "github",
+          connectionMethodKey: "managed",
+          grantKind: "user",
+          name: "GitHub",
+        },
+        actor,
+      );
+      const started = await service.startOAuth(
+        company.id,
+        connected.connectionId,
+        {
+          redirectUri:
+            "https://paperclip.example/api/tools/oauth/cloud-connector/callback",
+          actor,
+        },
+      );
+      await service.completePaperclipCloudConnectorCallback({
+        state: new URL(started.authorizationUrl).searchParams.get("state")!,
+        claimId: `github-shared-${randomUUID()}`,
+        actor,
+      });
+      const [personalGrant] = await db
+        .select()
+        .from(connectionGrants)
+        .where(
+          and(
+            eq(connectionGrants.connectionId, connected.connectionId),
+            eq(connectionGrants.kind, "user"),
+            eq(connectionGrants.status, "active"),
+          ),
+        );
+      expect(personalGrant).toBeDefined();
+      const [personalSecret] = await db
+        .select()
+        .from(companySecrets)
+        .where(
+          eq(
+            companySecrets.id,
+            personalGrant.credentialSecretRefs.find(
+              (ref) => ref.configPath === "oauth.access_token",
+            )!.secretId,
+          ),
+        );
+      // The premise of both tests: the shared credential really is user-scoped
+      // and owned by the operator, not by the agent.
+      expect(personalSecret).toMatchObject({
+        scope: "user",
+        ownerUserId: userId,
+      });
+      const addAgentGrant = async (
+        refs: typeof personalGrant.credentialSecretRefs,
+      ) => {
+        const [grant] = await db
+          .insert(connectionGrants)
+          .values({
+            companyId: company.id,
+            connectionId: connected.connectionId,
+            kind: "agent",
+            subjectAgentId: agent.id,
+            status: "active",
+            credentialSecretRefs: refs,
+            providerTenant: personalGrant.providerTenant,
+          })
+          .returning();
+        return grant!;
+      };
+      return {
+        service,
+        company,
+        userId,
+        agent,
+        connectionId: connected.connectionId,
+        personalGrant,
+        addAgentGrant,
+        restore: () => {
+          githubDefinition.ownershipAvailability =
+            previousOwnershipAvailability;
+        },
+      };
+    }
+
+    it("keeps an agent grant that borrows the operator's user-scoped credential healthy, matching the runtime predicate", async () => {
+      const fixture = await connectSharedGitHubIdentity();
+      try {
+        // Same secret refs as the personal grant: this is standing delegation,
+        // which `tool-gateway.ts` resolves happily at runtime. The health probe
+        // must not be stricter, or every sweep writes a connection-level
+        // `grant_credential_invalid` for a grant that demonstrably works.
+        await fixture.addAgentGrant(fixture.personalGrant.credentialSecretRefs);
+
+        const health = await fixture.service.checkHealth(
+          fixture.connectionId,
+          { actorType: "system", actorId: "tool_health_sweep" },
+        );
+
+        expect(health.connection.healthStatus).toBe("ok");
+        const [row] = await db
+          .select()
+          .from(toolConnections)
+          .where(eq(toolConnections.id, fixture.connectionId));
+        expect(row.healthStatus).toBe("ok");
+        expect(row.lastError).toBeNull();
+        expect(row.healthMessage).not.toContain(
+          "Personal authorization has an invalid credential",
+        );
+      } finally {
+        fixture.restore();
+      }
+    });
+
+    it("does not degrade connection health when only one of several grants cannot be refreshed", async () => {
+      const fixture = await connectSharedGitHubIdentity();
+      try {
+        // A grant-scoped fault: this agent grant points at a secret that does
+        // not exist. The operator's own grant is untouched and still resolves,
+        // so the connection itself is usable and its health must stay `ok` --
+        // any attention health here blanks `usableConnectionForAgent` for every
+        // agent on the connection.
+        await fixture.addAgentGrant([
+          {
+            label: "GitHub access token",
+            required: true,
+            secretId: randomUUID(),
+            configPath: "oauth.access_token",
+            versionSelector: "latest",
+          },
+        ]);
+
+        const health = await fixture.service.checkHealth(
+          fixture.connectionId,
+          { actorType: "system", actorId: "tool_health_sweep" },
+        );
+
+        expect(health.connection.healthStatus).toBe("ok");
+        const [row] = await db
+          .select()
+          .from(toolConnections)
+          .where(eq(toolConnections.id, fixture.connectionId));
+        expect(row.healthStatus).toBe("ok");
+        expect(row.lastError).toBeNull();
+      } finally {
+        fixture.restore();
+      }
+    });
+  });
+
   it("routes a managed Drive callback into the personal vault, filtered catalog, and provider-specific activity", async () => {
     const company = await createCompany(db);
     const userId = `drive-member-${randomUUID()}`;
