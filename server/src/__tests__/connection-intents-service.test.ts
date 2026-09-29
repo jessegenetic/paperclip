@@ -952,6 +952,10 @@ describeEmbeddedPostgres("connectionIntentService", () => {
       expect(before.configured).toBe(true);
       expect(before.grant).toBeUndefined();
       expect(before.error).toBe("No managed GitHub identity is available for this run");
+      // Matching nothing must report *no* pool. This used to report `personal`,
+      // so the string that means "the operator's own grant was selected" was
+      // also the string every failing probe on this fault returned.
+      expect(before.identitySource).toBeUndefined();
     }
 
     await db.insert(connectionGrantDelegations).values({
@@ -966,7 +970,11 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     for (const responsibleUserId of [null, `unrelated-${randomUUID()}`]) {
       const selection = await resolveManagedGitHubIdentitySelection(db, companyId, { agentId: delegatedAgentId, responsibleUserId });
       expect(selection.grant?.id).toBe(grant!.id);
-      expect(selection.identitySource).toBe("personal");
+      // Borrowing the operator's identity is reported as borrowing it. The same
+      // grant read by the owner's own run below reports `personal`, so the two
+      // are distinguishable from outside -- which they were not when this value
+      // was computed from `grant.kind`.
+      expect(selection.identitySource).toBe("delegated");
     }
 
     // Delegation is per agent. The undelegated agent sees nothing, which is what
@@ -974,11 +982,14 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     const undelegated = await resolveManagedGitHubIdentitySelection(db, companyId, { agentId: otherAgentId, responsibleUserId: null });
     expect(undelegated.grant).toBeUndefined();
     expect(undelegated.error).toBe("No managed GitHub identity is available for this run");
+    expect(undelegated.identitySource).toBeUndefined();
 
     // The owner's own runs keep using their own grant directly: precedence puts
     // `personal` ahead of `delegated`, so a delegation can never shadow it.
+    // Same grant, same row, different run -- and now a different reported pool,
+    // which is the whole point of separating the two values.
     await expect(resolveManagedGitHubIdentitySelection(db, companyId, { agentId: otherAgentId, responsibleUserId: ownerUserId }))
-      .resolves.toMatchObject({ grant: expect.objectContaining({ id: grant!.id }) });
+      .resolves.toMatchObject({ grant: expect.objectContaining({ id: grant!.id }), identitySource: "personal" });
 
     await db.delete(connectionGrantDelegations).where(eq(connectionGrantDelegations.grantId, grant!.id));
     await db.delete(connectionGrants).where(eq(connectionGrants.id, grant!.id));

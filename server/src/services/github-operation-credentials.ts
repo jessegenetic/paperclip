@@ -14,6 +14,7 @@ import {
   buildGitAuthInvocation,
   githubCredentialPrincipalUserId,
   resolveManagedGitHubCredential,
+  type GitHubIdentitySource,
 } from "./git-credentials.js";
 import { secretService } from "./secrets.js";
 import { resolveCoreTrustPreset } from "./trust-preset-resolver.js";
@@ -21,7 +22,7 @@ import { isLowTrustQuarantined } from "./source-trust.js";
 
 export type GitHubCredentialSummary = {
   status: "available" | "absent" | "unavailable";
-  source?: "personal" | "dedicated";
+  source?: GitHubIdentitySource;
   login?: string;
   reason?: string;
   connectionId?: string;
@@ -168,8 +169,12 @@ export async function resolveGitHubOperationCredentials(
       env = buildGitAuthInvocation(resolved.credential).env;
     } else {
       summary = {
+        // No `?? "personal"` here. Resolution reports no pool when none
+        // matched, and defaulting that to `personal` is what made every
+        // zero-candidate failure on this fault claim the operator's own
+        // identity had been selected when nothing had been.
         status: resolved.configured ? "unavailable" : "absent",
-        source: resolved.identitySource ?? "personal",
+        source: resolved.identitySource,
         reason: resolved.error ?? "No GitHub identity connected",
       };
     }

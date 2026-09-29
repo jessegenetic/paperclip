@@ -175,7 +175,8 @@ export interface HeartbeatRun {
     github: {
       status: "available" | "absent" | "unavailable";
       login?: string;
-      source?: "personal" | "dedicated";
+      /** Which candidate pool matched; absent when none did. */
+      source?: "personal" | "dedicated" | "delegated";
       reason?: string;
       connectionId?: string;
       grantId?: string;

@@ -45,13 +45,46 @@ export const GIT_CREDENTIAL_TOKEN_ENV_KEY = "PAPERCLIP_GIT_TOKEN";
 const GIT_CREDENTIAL_HELPER =
   `!f() { ok=; proto=; while IFS= read -r l && [ -n "$l" ]; do case "$l" in host=github.com|host=www.github.com) ok=1;; protocol=https) proto=1;; esac; done; if [ "$1" = get ] && [ -n "$ok" ] && [ -n "$proto" ]; then printf 'username=x-access-token\\npassword=%s\\n' "$PAPERCLIP_GIT_TOKEN"; fi; }; f`;
 
+/**
+ * Which candidate pool a managed GitHub grant was matched from.
+ *
+ * `delegated` used to be inexpressible: the value was computed from
+ * `grant.kind`, and a borrowed identity is a *user* grant exactly like a
+ * directly-subjected one, so both reported `personal`. That collapse was
+ * actively misleading here -- `personal` was the failure signature while the
+ * delegated pool was unreachable, so the same string came to mean both "this
+ * run matched nothing" and "this run is borrowing an operator's identity". It
+ * also hid the one distinction an audit reader most wants: whether an agent is
+ * acting as itself or on someone else's credential.
+ */
+export type GitHubIdentitySource = "personal" | "dedicated" | "delegated";
+
+/**
+ * Classify a selected grant against the run it was selected for.
+ *
+ * Mirrors the pool precedence in `resolveManagedGitHubIdentitySelection`: a
+ * grant subjected to this agent is dedicated, a user grant subjected to this
+ * run's own principal is personal, and any other user grant can only have been
+ * reached through a standing delegation. Callers that hold a grant but not the
+ * pool it came from (the MCP gateway) classify with this rather than
+ * re-deriving a narrower answer from `kind` alone.
+ */
+export function classifyGitHubIdentitySource(
+  grant: Pick<typeof connectionGrants.$inferSelect, "kind" | "subjectAgentId" | "subjectUserId">,
+  context: { agentId?: string | null; responsibleUserId?: string | null },
+): GitHubIdentitySource {
+  if (grant.kind === "agent" && grant.subjectAgentId && grant.subjectAgentId === context.agentId) return "dedicated";
+  if (grant.subjectUserId && grant.subjectUserId === context.responsibleUserId) return "personal";
+  return "delegated";
+}
+
 export type GitCredential = {
   token: string;
   source: "managed_connection" | "company_secret" | "server_env";
   /** The company-secret name the token came from; null for a server-environment token. */
   secretName: string | null;
   githubIdentity?: { userId: string; login: string };
-  identitySource?: "personal" | "dedicated";
+  identitySource?: GitHubIdentitySource;
   connectionId?: string;
   grantId?: string;
 };
@@ -322,7 +355,7 @@ export async function resolveManagedGitHubIdentitySelection(
   },
 ): Promise<{
   configured: boolean;
-  identitySource?: "personal" | "dedicated";
+  identitySource?: GitHubIdentitySource;
   grant?: typeof connectionGrants.$inferSelect;
   error?: string;
 }> {
@@ -394,7 +427,14 @@ export async function resolveManagedGitHubIdentitySelection(
       })
     : [];
   const candidates = dedicated.length > 0 ? dedicated : personal.length > 0 ? personal : await delegated();
-  const identitySource = dedicated.length > 0 ? "dedicated" as const : "personal" as const;
+  // Report the pool that actually matched, and report *no* pool when nothing
+  // did. This used to read `dedicated.length > 0 ? "dedicated" : "personal"`,
+  // so a run that matched nothing still claimed `personal` -- which is the
+  // string every failing probe on this fault returned, making "no candidate"
+  // and "matched the operator's own grant" indistinguishable from outside.
+  const identitySource = candidates.length > 0
+    ? classifyGitHubIdentitySource(candidates[0]!, context)
+    : undefined;
   // Reconnecting can create another connection/grant for the same GitHub
   // account. Ambiguity is about provider identities, not the number of rows.
   // Only trust GitHub's stable account ID; equal logins or missing metadata
@@ -548,7 +588,7 @@ function describeCredentialAcquisitionFailure(error: unknown): string {
 
 type ManagedGitHubCredentialResult = {
   configured: boolean;
-  identitySource?: "personal" | "dedicated";
+  identitySource?: GitHubIdentitySource;
   credential?: GitCredential;
   error?: string;
 };
@@ -662,13 +702,17 @@ export async function resolveManagedGitHubCredential(
         source: "managed_connection" as const,
         secretName: null,
         githubIdentity: { userId: github.userId, login: github.login },
-        identitySource: grant.kind === "agent" ? "dedicated" as const : "personal" as const,
+        // The selection knows which pool it drew this grant from; `grant.kind`
+        // does not, because a borrowed identity and a directly-subjected one
+        // are both `user` grants. Recomputing here overrode the selection's
+        // own answer and is what made a delegated match report `personal`.
+        identitySource: selection.identitySource,
         connectionId: grant.connectionId,
         grantId: grant.id,
       },
     };
   };
-  let failure: { configured: boolean; identitySource?: "personal" | "dedicated"; error?: string };
+  let failure: { configured: boolean; identitySource?: GitHubIdentitySource; error?: string };
   try {
     const result = await acquire(selection);
     if (result.credential) return result;

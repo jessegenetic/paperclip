@@ -17,6 +17,7 @@ import {
   DEFAULT_GITHUB_TOKEN_SECRET_NAMES,
   GIT_CREDENTIAL_TOKEN_ENV_KEY,
   buildGitAuthInvocation,
+  classifyGitHubIdentitySource,
   createGitRemoteAuthProvider,
   describeGitAuthFailure,
   isGitHubHttpsRemoteUrl,
@@ -624,12 +625,63 @@ describe("resolveManagedGitHubCredential", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.credential?.token).toBe("personal-token");
-    expect(result.credential?.identitySource).toBe("personal");
+    // Reported as borrowed, not as this run's own identity. This assertion read
+    // `personal` while the test's own name said delegated -- the value was
+    // computed from `grant.kind`, and a borrowed identity is a `user` grant
+    // exactly like a directly-subjected one.
+    expect(result.credential?.identitySource).toBe("delegated");
     expect(resolveUserSecretValue).toHaveBeenCalledWith(
       "company-1",
       expect.objectContaining({ responsibleUserId: "owner-1" }),
       expect.anything(),
     );
+
+    // The contrast that makes the value load-bearing: the *same* grant read by
+    // the owner's own run is `personal`. One grant, two runs, two answers.
+    const own = buildScenario({ grant: { kind: "user", subjectUserId: "owner-1" } });
+    const ownResult = await resolveManagedGitHubCredential(own.db, own.secrets, "company-1", {
+      agentId: "agent-a",
+      responsibleUserId: "owner-1",
+    });
+    expect(ownResult.credential?.token).toBe("personal-token");
+    expect(ownResult.credential?.identitySource).toBe("personal");
+  });
+
+  // The MCP gateway holds a grant but not the pool it came from, so it
+  // classifies with this rather than re-deriving from `kind` -- which is what
+  // made the MCP plane report `personal` for a borrowed credential too. The
+  // gateway's own call sites are covered only by typecheck; this pins the
+  // classification both planes now share.
+  it("classifies a grant against the run it was selected for", () => {
+    const agentGrant = { kind: "agent", subjectAgentId: "agent-a", subjectUserId: null };
+    const userGrant = { kind: "user", subjectAgentId: null, subjectUserId: "owner-1" };
+
+    expect(classifyGitHubIdentitySource(agentGrant, { agentId: "agent-a", responsibleUserId: null })).toBe("dedicated");
+    expect(classifyGitHubIdentitySource(userGrant, { agentId: "agent-a", responsibleUserId: "owner-1" })).toBe("personal");
+    // Same user grant, a run whose principal is not its subject: reachable only
+    // through a standing delegation, so that is what it is called.
+    expect(classifyGitHubIdentitySource(userGrant, { agentId: "agent-a", responsibleUserId: "someone-else" })).toBe("delegated");
+    expect(classifyGitHubIdentitySource(userGrant, { agentId: "agent-a", responsibleUserId: null })).toBe("delegated");
+    // A null principal must not collide with a grant that has no subject user.
+    expect(classifyGitHubIdentitySource({ kind: "user", subjectAgentId: null, subjectUserId: null }, { agentId: "agent-a", responsibleUserId: null })).toBe("delegated");
+    // An agent grant subjected to a *different* agent is never this run's own.
+    expect(classifyGitHubIdentitySource({ kind: "agent", subjectAgentId: "agent-b", subjectUserId: null }, { agentId: "agent-a", responsibleUserId: null })).not.toBe("dedicated");
+  });
+
+  it("reports no identity source at all when no pool matched", async () => {
+    // `personal` used to be returned here too, so the string that means "the
+    // operator's own grant was selected" was also what every zero-candidate
+    // failure on this fault reported. An operator reading `source: personal`
+    // beside an empty `env` could not tell which had happened.
+    const { db, secrets } = buildScenario({ grant: { kind: "user", subjectUserId: "owner-1" } });
+    const result = await resolveManagedGitHubCredential(db, secrets, "company-1", {
+      agentId: "agent-a",
+      responsibleUserId: "someone-else",
+    });
+
+    expect(result.credential).toBeUndefined();
+    expect(result.error).toBe("No managed GitHub identity is available for this run");
+    expect(result.identitySource).toBeUndefined();
   });
 
   it("refuses a delegated credential once its owner is no longer an authorized member", async () => {

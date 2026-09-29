@@ -9,7 +9,7 @@ import { githubChatReviewService } from "./chat-github-reviews.js";
 import { runIdentityContexts } from "@paperclipai/db";
 import { captureRunIdentity } from "./run-identity.js";
 import { emitConnectionInvoked } from "./connector-telemetry.js";
-import { resolveManagedGitHubIdentitySelection } from "./git-credentials.js";
+import { classifyGitHubIdentitySource, resolveManagedGitHubIdentitySelection } from "./git-credentials.js";
 import { extractRemoteMcpPending } from "./remote-mcp-pending.js";
 import { logger } from "../middleware/logger.js";
 import { spawn } from "node:child_process";
@@ -3963,7 +3963,11 @@ export function createToolGatewayService(
             github: {
               status: "available",
               login: grant.providerTenant?.github?.login,
-              source: grant.kind === "agent" ? "dedicated" : "personal",
+              // `grant.kind` cannot tell a borrowed identity from a directly
+              // subjected one -- both are `user` grants -- so the MCP plane
+              // reported `personal` for a delegated credential exactly as the
+              // credential plane used to.
+              source: classifyGitHubIdentitySource(grant, session),
               connectionId: connection.id,
               grantId: grant.id,
               authenticationMode: "managed",
@@ -3984,7 +3988,7 @@ export function createToolGatewayService(
             github: {
               status: "unavailable",
               reason: "GitHub authorization is unavailable",
-              source: grant.kind === "agent" ? "dedicated" : "personal",
+              source: classifyGitHubIdentitySource(grant, session),
             },
           })
           .where(
