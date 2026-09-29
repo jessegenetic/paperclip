@@ -1696,6 +1696,74 @@ describeEmbeddedPostgres("tool gateway service", () => {
     expect(dispatched).toHaveBeenCalledTimes(1);
   });
 
+  it("refuses to lend the operator's GitHub identity to a company_default run, and says so", async () => {
+    // A timer-caused run has no operator behind it, so it must not borrow one
+    // implicitly -- the same rule the credential-export path applies. A
+    // `company_default` context still carries the company's default responsible
+    // user, so the null is the consumer's job and nothing upstream does it: the
+    // two runs below differ *only* in their identity-context cause.
+    const { company, agent, issue, run } = await createRunFixture(db);
+    const { connection } = await createRemoteMcpToolFixture(db, company.id);
+    await db.update(toolConnections).set({ authKind: "oauth", credentialSource: "paperclip_vault",
+      config: { ...connection.config, sourceTemplateKey: "github" },
+    }).where(eq(toolConnections.id, connection.id));
+    // Installed company-wide and granted to the operator, so connection
+    // eligibility is identical for both runs and the cause is the only
+    // discriminator left.
+    await db.insert(toolConnectionInstalls).values({ companyId: company.id,
+      connectionId: connection.id, targetType: "company", targetId: company.id });
+    await db.insert(companyMemberships).values({ companyId: company.id, principalType: "user",
+      principalId: "A", status: "active", membershipRole: "member" });
+    const vault = secretService(db);
+    const definition = await vault.createUserSecretDefinition(company.id, {
+      key: `github_${randomUUID().replace(/-/g, "")}`, name: "Operator GitHub token", provider: "local_encrypted",
+    }, { userId: "A" });
+    const secret = await vault.createCurrentUserSecretValue(company.id, "A",
+      { definitionId: definition.id, value: "operator-token" }, { userId: "A" });
+    await vault.syncUserSecretDeclarationsForTarget(company.id,
+      { targetType: "tool_connection", targetId: connection.id },
+      [{ definitionKey: definition.key, configPath: "oauth.access_token", envKey: "GITHUB_TOKEN", required: true }]);
+    const [grant] = await db.insert(connectionGrants).values({ companyId: company.id,
+      connectionId: connection.id, kind: "user", subjectUserId: "A", status: "active",
+      credentialSecretRefs: [{ secretId: secret.id, configPath: "oauth.access_token", versionSelector: "latest" }],
+      providerTenant: { github: { userId: "42", login: "octocat", installationCount: 1,
+        repositoryCount: 1, repositorySelection: "all", installationIds: ["101"] } },
+    }).returning();
+    await db.insert(toolPolicies).values({ companyId: company.id, name: "Allow reads",
+      policyType: "allow", selectors: { riskLevel: "read" } });
+    const dispatched = vi.fn(async (_url: string, init: RequestInit) =>
+      new Response(JSON.stringify({ jsonrpc: "2.0", id: JSON.parse(String(init.body)).id,
+        result: { content: [{ type: "text", text: "ok" }] } }),
+      { status: 200, headers: { "content-type": "application/json" } }));
+    const gateway = createTestToolGatewayService(db, {
+      oauthGrantRefresher: async () => grant!, remoteHttpRequest: dispatched,
+    });
+
+    // Control: an operator-caused run on the same fixtures borrows the identity.
+    // Without this leg the refusal below could be passing for any reason.
+    await initializeRunIdentity(db, { companyId: company.id, runId: run.id, issueId: issue.id,
+      responsibleUserId: "A", cause: "instruction" });
+    const operatorSession = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: run.id });
+    const tool = (await gateway.listToolsForSession(operatorSession.token)).find(t => t.providerType === "mcp_remote_http")!;
+    expect((await gateway.executeTool({ sessionToken: operatorSession.token, tool: tool.name, parameters: {} })).status)
+      .toBe("completed");
+    expect(new Headers(dispatched.mock.calls[0]![1].headers).get("authorization")).toBe("Bearer operator-token");
+
+    const [automation] = await db.insert(heartbeatRuns).values({ companyId: company.id, agentId: agent.id,
+      invocationSource: "schedule", status: "running", contextSnapshot: { issueId: issue.id },
+    }).returning();
+    await initializeRunIdentity(db, { companyId: company.id, runId: automation!.id, issueId: issue.id,
+      responsibleUserId: "A", cause: "company_default" });
+    const automationSession = await gateway.createSession({ companyId: company.id, agentId: agent.id, runId: automation!.id });
+    await expect(gateway.executeTool({ sessionToken: automationSession.token, tool: tool.name, parameters: {} }))
+      .rejects.toMatchObject({ reasonCode: "github_identity_unavailable" });
+    // Refused before dispatch, not after -- and the refusal names a missing
+    // identity rather than a broken connection, so the agent's escalation path
+    // reads the same state the credential broker would report.
+    expect(dispatched).toHaveBeenCalledTimes(1);
+    await db.delete(companyMemberships).where(eq(companyMemberships.companyId, company.id));
+  });
+
   it("refreshes a customer OAuth grant once and retries after an upstream 401", async () => {
     const { company, agent, run } = await createRunFixture(db);
     const { connection } = await createRemoteMcpToolFixture(db, company.id);

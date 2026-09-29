@@ -172,6 +172,7 @@ import { incrementToolRuntimeMetricCounter } from "./tool-runtime-metrics.js";
 import { logger } from "../middleware/logger.js";
 import {
   createGitRemoteAuthProvider,
+  githubCredentialPrincipalUserId,
   resolveManagedGitHubIdentitySelection,
   describeGitAuthFailure,
   filterResolvedGitHubConnectionsForRun,
@@ -21159,7 +21160,12 @@ export function heartbeatService(
         agent.companyId,
         {
           agentId: agent.id,
-          responsibleUserId,
+          // Only `configured` is read from this selection, and that is decided
+          // by the owner-selected installs alone -- so this is the same answer
+          // either way today. Derive the principal through the shared helper
+          // regardless: a later reader of `grant` here must not get a more
+          // permissive identity than the export path would issue.
+          responsibleUserId: githubCredentialPrincipalUserId(identityContext),
         },
       );
       const useHostGitHub =

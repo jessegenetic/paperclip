@@ -9,7 +9,7 @@ import { githubChatReviewService } from "./chat-github-reviews.js";
 import { runIdentityContexts } from "@paperclipai/db";
 import { captureRunIdentity } from "./run-identity.js";
 import { emitConnectionInvoked } from "./connector-telemetry.js";
-import { classifyGitHubIdentitySource, resolveManagedGitHubIdentitySelection } from "./git-credentials.js";
+import { classifyGitHubIdentitySource, githubCredentialPrincipalUserId, resolveManagedGitHubIdentitySelection } from "./git-credentials.js";
 import { extractRemoteMcpPending } from "./remote-mcp-pending.js";
 import { logger } from "../middleware/logger.js";
 import { spawn } from "node:child_process";
@@ -1910,10 +1910,11 @@ export function createToolGatewayService(
     return {
       ...session,
       identityContextId: captured.context?.id,
-      responsibleUserId:
-        captured.context?.cause === "company_default"
-          ? null
-          : captured.context?.responsibleUserId,
+      // Every plane that reports or issues a managed GitHub credential derives
+      // the borrowable principal from one helper. This rule was written out by
+      // hand at each of these sites, and a copy that drifted is what let
+      // readiness advertise a connection the export path refused.
+      responsibleUserId: githubCredentialPrincipalUserId(captured.context),
     };
   }
 
@@ -7729,8 +7730,7 @@ export function createToolGatewayService(
         "identity_context_unavailable",
       );
     session.identityContextId = origin.id;
-    session.responsibleUserId =
-      origin.cause === "company_default" ? null : origin.responsibleUserId;
+    session.responsibleUserId = githubCredentialPrincipalUserId(origin);
   }
 
   async function executeApprovedAgentInvocation(input: {
@@ -9773,10 +9773,7 @@ export function createToolGatewayService(
               "identity_context_unavailable",
             );
           session.identityContextId = origin.id;
-          session.responsibleUserId =
-            origin.cause === "company_default"
-              ? null
-              : origin.responsibleUserId;
+          session.responsibleUserId = githubCredentialPrincipalUserId(origin);
         }
       }
       let tool = await findToolForSession(session, input.tool);
