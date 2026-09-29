@@ -294,6 +294,24 @@ export function createGitRemoteAuthProvider(
   };
 }
 
+/**
+ * The principal a run may borrow a GitHub identity from.
+ *
+ * A `company_default` run has no operator behind it, so it must not borrow one
+ * implicitly; an owner's standing delegation is the explicit, audited exception
+ * and is reached through the `delegated` pool below. This rule used to live only
+ * at the identity broker, so readiness derived the principal from the run row
+ * directly and could advertise a connection as usable while the export path
+ * refused it. Every plane that reports or issues a managed GitHub credential
+ * derives the principal here, so readiness reports the conjunction of the planes
+ * rather than the most permissive one.
+ */
+export function githubCredentialPrincipalUserId(
+  context: { cause?: string | null; responsibleUserId?: string | null } | null | undefined,
+): string | null {
+  return context?.cause === "company_default" ? null : (context?.responsibleUserId ?? null);
+}
+
 export async function resolveManagedGitHubIdentitySelection(
   db: Db,
   companyId: string,

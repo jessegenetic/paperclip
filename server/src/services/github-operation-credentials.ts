@@ -8,10 +8,11 @@ import {
   runIdentityContexts,
   type Db,
 } from "@paperclipai/db";
-import { forbidden } from "../errors.js";
+import { HttpError, forbidden } from "../errors.js";
 import { captureRunIdentity } from "./run-identity.js";
 import {
   buildGitAuthInvocation,
+  githubCredentialPrincipalUserId,
   resolveManagedGitHubCredential,
 } from "./git-credentials.js";
 import { secretService } from "./secrets.js";
@@ -145,15 +146,10 @@ export async function resolveGitHubOperationCredentials(
       {
         agentId: input.agentId,
         heartbeatRunId: input.runId,
-        // A `company_default` run has no operator behind it, so it must not
-        // borrow a principal implicitly -- hence the null below. An owner's
-        // standing delegation is the explicit, audited exception to that, and it
-        // is now reachable here: this call used to disable the delegation pool
-        // while simultaneously producing the only context that pool accepted.
-        responsibleUserId:
-          context?.cause === "company_default"
-            ? null
-            : (context?.responsibleUserId ?? null),
+        // Shared with the readiness/`connection_request` gate so the plane that
+        // reports a connection usable cannot disagree with the plane that issues
+        // the credential. See `githubCredentialPrincipalUserId`.
+        responsibleUserId: githubCredentialPrincipalUserId(context),
         issueId:
           typeof run.contextSnapshot?.issueId === "string"
             ? run.contextSnapshot.issueId
@@ -177,11 +173,18 @@ export async function resolveGitHubOperationCredentials(
         reason: resolved.error ?? "No GitHub identity connected",
       };
     }
-  } catch {
-    // Provider/secret errors can contain sensitive response bodies. Never persist them.
+  } catch (error) {
+    // Provider/secret errors can contain sensitive response bodies, so no message
+    // from the throw is persisted. But resolution already returns its typed
+    // failures as `resolved.error` above, so anything reaching here is either a
+    // refusal carrying a status or an outright defect -- and calling both
+    // "temporarily unavailable" is what sent operators to retry a permanent fault.
     summary = {
       status: "unavailable",
-      reason: "GitHub credentials are temporarily unavailable",
+      reason:
+        error instanceof HttpError && error.status < 500
+          ? `GitHub credential resolution was refused (${error.status})`
+          : "GitHub credential resolution failed unexpectedly; this is not a transient outage",
     };
   }
   if (context)

@@ -41,7 +41,12 @@ const credentials = vi.hoisted(() => ({
 vi.mock("../services/secrets.js", () => ({
   secretService: credentials.secretService,
 }));
-vi.mock("../services/git-credentials.js", () => ({
+// Spread the real module rather than listing exports. A hand-written factory
+// silently drops any export added later, and the credential path's `catch`
+// reports the resulting TypeError as "temporarily unavailable" -- so the omission
+// looks exactly like a broker outage instead of a broken test double.
+vi.mock("../services/git-credentials.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/git-credentials.js")>()),
   resolveManagedGitHubCredential: credentials.resolveManagedGitHubCredential,
   buildGitAuthInvocation: () => ({ env: { GH_TOKEN: "test-export-sentinel" } }),
 }));

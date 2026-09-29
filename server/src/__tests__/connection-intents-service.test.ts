@@ -17,6 +17,7 @@ import {
   heartbeatRuns,
   issueThreadInteractions,
   issues,
+  runIdentityContexts,
   toolApplications,
   toolCatalogEntries,
   connectionIntentDeliveries,
@@ -978,6 +979,97 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     // `personal` ahead of `delegated`, so a delegation can never shadow it.
     await expect(resolveManagedGitHubIdentitySelection(db, companyId, { agentId: otherAgentId, responsibleUserId: ownerUserId }))
       .resolves.toMatchObject({ grant: expect.objectContaining({ id: grant!.id }) });
+
+    await db.delete(connectionGrantDelegations).where(eq(connectionGrantDelegations.grantId, grant!.id));
+    await db.delete(connectionGrants).where(eq(connectionGrants.id, grant!.id));
+    await db.delete(toolConnectionInstalls).where(eq(toolConnectionInstalls.connectionId, connection!.id));
+    await db.delete(toolConnections).where(eq(toolConnections.id, connection!.id));
+  });
+
+  // Readiness derived the borrowable principal straight from the run row, while
+  // the credential broker nulls it for a `company_default` run -- an automation
+  // tick has no operator behind it, so it must not borrow one implicitly. With a
+  // single personal grant that split is directly observable: readiness matched the
+  // grant and answered `ready` while the export path resolved nothing and handed
+  // back an empty environment, and because `request` gates on the same check the
+  // agent could not raise a card about it either. Both planes have to derive the
+  // principal identically.
+  it("does not report a borrowable personal identity as ready on an ownerless run", async () => {
+    const companyId = claims.company_id;
+    const ownerUserId = claims.responsible_user_id!;
+    const agentId = randomUUID();
+    const issueId = randomUUID();
+    await db.insert(agents).values({ id: agentId, companyId, name: "Automation Agent", role: "engineer", status: "active", adapterType: "claude_local", adapterConfig: {}, runtimeConfig: {}, permissions: {} });
+    await db.insert(issues).values({ id: issueId, companyId, title: "Publish a preview", status: "in_progress", priority: "medium", assigneeAgentId: agentId });
+
+    const [application] = await db.insert(toolApplications).values({
+      companyId, applicationKey: `github-${randomUUID()}`, name: `GitHub (principal ${randomUUID()})`, type: "mcp_http",
+      status: "active", metadata: { sourceTemplateKey: "github" },
+    }).returning();
+    const [connection] = await db.insert(toolConnections).values({
+      companyId, applicationId: application!.id, name: `Operator's GitHub ${randomUUID()}`, uid: `github/${randomUUID()}`,
+      transport: "mcp_remote", authKind: "oauth", credentialPolicy: "per_agent", status: "active",
+      enabled: true, healthStatus: "ok",
+      config: { sourceTemplateKey: "github" }, transportConfig: { sourceTemplateKey: "github" },
+    }).returning();
+    await db.insert(toolConnectionInstalls).values({ companyId, connectionId: connection!.id, targetType: "agent", targetId: agentId });
+    const [profile] = await db.insert(toolProfiles).values({ companyId, name: `GitHub principal reads ${randomUUID()}`, profileKey: `github-principal-${randomUUID()}`, defaultAction: "allow", status: "active" }).returning();
+    await db.insert(toolProfileBindings).values({ companyId, profileId: profile!.id, targetType: "agent", targetId: agentId });
+    await db.insert(toolCatalogEntries).values({ companyId, connectionId: connection!.id, toolName: "get-me", name: "get-me", versionHash: "fixture-v1", status: "active", entryKind: "tool" });
+
+    // Everything about this grant is healthy -- active, live provider metadata, a
+    // readable company-scoped secret -- so the run's principal is the only thing
+    // that can decide the outcome. The grant is subjected to the operator, which
+    // is exactly what both runs below resolve as their responsible user.
+    const [secret] = await db.insert(companySecrets).values({
+      companyId, scope: "company", key: `github-token-${randomUUID()}`, name: `GitHub token ${randomUUID()}`, status: "active",
+    }).returning();
+    const [grant] = await db.insert(connectionGrants).values({
+      companyId, connectionId: connection!.id, kind: "user", subjectUserId: ownerUserId, status: "active",
+      createdByUserId: ownerUserId,
+      providerTenant: { github: {
+        userId: "gh-1", login: "operator", installationCount: 1, repositoryCount: 4,
+        repositorySelection: "all", installationIds: ["1"], installationOwnerLogins: ["operator"],
+      } },
+      credentialSecretRefs: [{ secretId: secret!.id, configPath: "oauth.access_token" }],
+    }).returning();
+
+    const runFor = async (cause: string) => {
+      const runIdForCause = randomUUID();
+      const [context] = await db.insert(runIdentityContexts).values({
+        companyId, runId: runIdForCause, revision: 1, responsibleUserId: ownerUserId,
+        cause, correlationId: `${cause}-${randomUUID()}`, status: "accepted", acceptedAt: new Date(),
+      }).returning();
+      await db.insert(heartbeatRuns).values({
+        id: runIdForCause, companyId, agentId, status: "running", responsibleUserId: ownerUserId,
+        activeIdentityContextId: context!.id, contextSnapshot: { issueId },
+      });
+      return { ...claims, sub: agentId, run_id: runIdForCause } satisfies RuntimeToolsTokenClaims;
+    };
+    const service = connectionIntentService(db);
+    const githubResult = async (forClaims: RuntimeToolsTokenClaims) =>
+      (await service.search(forClaims, "github")).results.find((result) => result.service === "github");
+
+    // Control: an operator-caused wake does borrow the operator's identity, so the
+    // same fixtures report ready. Without this the assertion below could pass for
+    // any reason at all.
+    const operatorClaims = await runFor("issue_commented");
+    expect(await githubResult(operatorClaims)).toMatchObject({ state: "ready", connectionId: connection!.id });
+
+    // The ownerless run must not, and the escalation path has to stay open for it.
+    const automationClaims = await runFor("company_default");
+    expect(await githubResult(automationClaims)).toMatchObject({ state: "needs_user_action", connectionId: null });
+    const request = await service.request(automationClaims, "github");
+    expect(request.state).toBe("needs_user_action");
+    expect(request.interactionId).not.toBeNull();
+
+    // And the sanctioned repair closes it on both planes at once: a standing
+    // delegation is the explicit, audited loan of that identity to this agent.
+    await db.insert(connectionGrantDelegations).values({
+      companyId, grantId: grant!.id, agentId, createdByUserId: ownerUserId,
+    });
+    expect(await githubResult(automationClaims)).toMatchObject({ state: "ready", connectionId: connection!.id });
+    expect((await service.request(automationClaims, "github")).state).toBe("ready");
 
     await db.delete(connectionGrantDelegations).where(eq(connectionGrantDelegations.grantId, grant!.id));
     await db.delete(connectionGrants).where(eq(connectionGrants.id, grant!.id));

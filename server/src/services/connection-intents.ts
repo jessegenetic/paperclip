@@ -32,7 +32,7 @@ import type { RuntimeToolsTokenClaims } from "../runtime-tools-token.js";
 import { issueThreadInteractionService } from "./issue-thread-interactions.js";
 import { toolAccessService } from "./tool-access.js";
 import { captureRunIdentity } from "./run-identity.js";
-import { resolveManagedGitHubIdentitySelection } from "./git-credentials.js";
+import { githubCredentialPrincipalUserId, resolveManagedGitHubIdentitySelection } from "./git-credentials.js";
 
 type ConnectionRunClaims = Pick<RuntimeToolsTokenClaims, "sub" | "company_id" | "run_id" | "responsible_user_id">;
 
@@ -154,11 +154,22 @@ export function connectionIntentService(db: Db) {
       || (!run.activeIdentityContextId && run.responsibleUserId !== claims.responsible_user_id)
     ) throw forbidden("Runtime tool token does not match its heartbeat run");
     if (run.status !== "running") throw forbidden("Runtime tool token is no longer active");
+    let identityCause: string | null = null;
     if (run.activeIdentityContextId) {
       const current = await captureRunIdentity(db, { companyId: run.companyId, agentId: run.agentId, runId: run.id });
       run = { ...run, responsibleUserId: current.run.responsibleUserId };
+      identityCause = current.context?.cause ?? null;
     }
     if (!run.responsibleUserId) throw forbidden("This task needs a responsible user to connect a service");
+    // A card needs a real addressee, so intent delivery keeps using the run's
+    // responsible user. Identity resolution must not: the credential planes
+    // derive the borrowable principal from the run's cause, and readiness that
+    // read the run row directly reported a connection usable while the export
+    // path refused it. Keep the two apart rather than conflating them.
+    const githubPrincipalUserId = githubCredentialPrincipalUserId({
+      cause: identityCause,
+      responsibleUserId: run.responsibleUserId,
+    });
     const snapshot = record(run.contextSnapshot);
     const issueId = text(snapshot?.issueId) ?? text(snapshot?.taskId);
     if (!issueId) throw unprocessable("Connection requests require a task-bound heartbeat run");
@@ -195,7 +206,7 @@ export function connectionIntentService(db: Db) {
     if (issue.status === "done" || issue.status === "cancelled") {
       throw conflict("Connection requests cannot be created on a closed task");
     }
-    return { run, issue, agent };
+    return { run, issue, agent, githubPrincipalUserId };
   }
 
   async function connectionInventory(companyId: string) {
@@ -220,6 +231,12 @@ export function connectionIntentService(db: Db) {
     companyId: string;
     agentId: string;
     responsibleUserId: string;
+    /**
+     * The principal the run may borrow a GitHub identity from, which is not
+     * always its responsible user. Omitted by the post-answer delivery paths,
+     * which have no run cause to derive it from.
+     */
+    githubPrincipalUserId?: string | null;
     serviceSlug: string;
     purpose?: "ai";
     inventory?: Awaited<ReturnType<typeof connectionInventory>>;
@@ -248,7 +265,10 @@ export function connectionIntentService(db: Db) {
       && !isToolConnectionAttentionHealth(connection.healthStatus) ? connection : null;
     if (input.serviceSlug === "github") {
       const selection = await resolveManagedGitHubIdentitySelection(db, input.companyId, {
-        agentId: input.agentId, responsibleUserId: input.responsibleUserId,
+        agentId: input.agentId,
+        responsibleUserId: input.githubPrincipalUserId !== undefined
+          ? input.githubPrincipalUserId
+          : input.responsibleUserId,
       });
       return usable(matching.find((connection) => connection.id === selection.grant?.connectionId));
     }
@@ -337,7 +357,7 @@ export function connectionIntentService(db: Db) {
   }
 
   async function search(claims: ConnectionRunClaims, query: string): Promise<ConnectionsSearchResult> {
-    const { run, agent } = await loadRunContext(claims);
+    const { run, agent, githubPrincipalUserId } = await loadRunContext(claims);
     const normalized = query.trim().toLocaleLowerCase();
     const tokens = normalized.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
     const inventory = await connectionInventory(run.companyId);
@@ -368,7 +388,7 @@ export function connectionIntentService(db: Db) {
         ? 1000 : tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0);
       if (!score) continue;
       const ready = await usableConnectionForAgent({ companyId: run.companyId, agentId: agent.id,
-        responsibleUserId: run.responsibleUserId!, serviceSlug: service, inventory });
+        responsibleUserId: run.responsibleUserId!, githubPrincipalUserId, serviceSlug: service, inventory });
       const denied = !ready && matching.length > 0 && await administrativeDenial(run.companyId, agent.id, service, inventory);
       candidates.push({ score, item: {
         service, name: app.name, description: app.description ?? null, logoUrl: app.branding.logoUrl ?? null,
@@ -398,6 +418,7 @@ export function connectionIntentService(db: Db) {
       companyId: context.run.companyId,
       agentId: context.agent.id,
       responsibleUserId: context.run.responsibleUserId!,
+      githubPrincipalUserId: context.githubPrincipalUserId,
       serviceSlug: app.slug,
       purpose: options.purpose,
     });
