@@ -9251,6 +9251,8 @@ export interface HeartbeatServiceOptions {
     runId: string;
     reason: string;
   }) => Promise<{ closed: number; busy: number; failed: number }>;
+  /** Test seam for extending admission during workspace preparation. */
+  beforeProviderAdmissionCheck?: (runId: string) => Promise<void>;
   /** Test seam for changing a continuation issue at the final pre-dispatch boundary. */
   beforeResolvedInteractionContinuationDispatchCheck?: (input: {
     runId: string;
@@ -17874,7 +17876,7 @@ export function heartbeatService(
 
   async function finalizeAgentStatus(
     agentId: string,
-    outcome: "succeeded" | "interrupted" | "failed" | "cancelled" | "timed_out",
+    outcome: "succeeded" | "interrupted" | "failed" | "cancelled" | "timed_out" | "deferred",
     failureReason?: string | null,
     options?: { keepIdleOnFailure?: boolean; wasFirstHeartbeat?: boolean },
   ) {
@@ -17893,6 +17895,7 @@ export function heartbeatService(
       runningCount > 0
         ? "running"
         : outcome === "succeeded" ||
+            outcome === "deferred" ||
             outcome === "interrupted" ||
             outcome === "cancelled" ||
             (outcome === "failed" && options?.keepIdleOnFailure)
@@ -22234,11 +22237,25 @@ export function heartbeatService(
           ))
         )
           return { dispatched: false };
+        // Native restart/reattachment has separate ownership semantics and
+        // requires integration at its provider-turn boundary, not this legacy gate.
+        const reserveLegacyDispatch = async () => {
+          if (run.runtimeMode === "native") return true;
+          await options.beforeProviderAdmissionCheck?.(run.id);
+          const admission = await providerAdmission.reserve(run.companyId, run.id, new Date(), {
+            legacyDispatchOwner: legacyControllerBootId,
+          });
+          if (admission.kind === "deferred") {
+            await finalizeAgentStatus(run.agentId, "deferred");
+          }
+          return admission.kind === "admitted";
+        };
         if (
           !issueId ||
           (!isResolvedInteractionContinuationWakeContext(context) &&
             run.scheduledRetryReason !== "native_safe_replacement")
         ) {
+          if (!(await reserveLegacyDispatch())) return { dispatched: false };
           return { dispatched: true, resultPromise: dispatch(() => {}) };
         }
         await options.beforeResolvedInteractionContinuationDispatchCheck?.({
@@ -22250,6 +22267,9 @@ export function heartbeatService(
           runId: run.id,
           issueId,
         });
+        // Reserve outside the issue/run transaction: admission locks pool
+        // then run, so acquiring it inside that gate would invert lock order.
+        if (!(await reserveLegacyDispatch())) return { dispatched: false };
         const gate = await runDispatch.dispatchResolvedInteractionIfCurrent({
           runId: run.id,
           companyId: run.companyId,
@@ -24350,6 +24370,22 @@ export function heartbeatService(
               );
             if (!guardedDispatch.dispatched) return;
             adapterResult = await guardedDispatch.resultPromise;
+            // Commit the shared floor before terminal publication or issue
+            // release can launch another wake. This is independent of retry
+            // budget and workspace finalization succeeding.
+            const recovery = readTransientRecoveryContractFromRun({
+              errorCode: adapterResult.errorCode ?? null,
+              resultJson: mergeAdapterRecoveryMetadata({
+                resultJson: adapterResult.resultJson,
+                errorFamily: adapterResult.errorFamily,
+                retryNotBefore: adapterResult.retryNotBefore,
+              }) ?? null,
+            });
+            await providerAdmission.settle({ companyId: run.companyId, runId: run.id,
+              outcome: recovery?.errorFamily ?? (adapterResult.timedOut ? "timed_out" :
+                adapterResult.exitCode === 0 ? "succeeded" : "failed"),
+              ...(recovery ? { providerFailure: { retryNotBefore: recovery.retryNotBefore } } : {}),
+            });
           }
           // Adapter returned cleanly, which means its workspace-restore finally
           // block also ran without throwing. Record the workspace_finalize
@@ -25449,6 +25485,11 @@ export function heartbeatService(
         const stoppedDuringFailure = executionControl.controller.signal.aborted;
         const stopSnapshot = stoppedDuringFailure ? await getRun(run.id) : null;
         const failureOutcome = stoppedDuringFailure ? "cancelled" : "failed";
+        // A thrown adapter failure has no structured provider deadline.
+        // Record that outcome without inventing quota or token evidence.
+        if (legacyAdapterEntered) await providerAdmission.settle({
+          companyId: run.companyId, runId: run.id, outcome: failureOutcome,
+        });
         const failedRunWrite = await setRunStatusIfRunning(run.id, failureOutcome, {
           error: message,
           errorCode: stopSnapshot?.errorCode ?? failureErrorCode,
@@ -25840,6 +25881,15 @@ export function heartbeatService(
       if (managedAiRuntime) await managedAiRuntime.cleanup().catch(() => logger.warn({ runId: run.id }, "AI connection refresh or cleanup failed"));
       let latestRun = await getRun(run.id).catch(() => null);
       try {
+        if (latestRun?.runtimeMode === "legacy" && isHeartbeatRunTerminalStatus(latestRun.status)) {
+          // Also settle reservations cancelled by a later policy gate. A
+          // reservation is not evidence that adapter/provider work began.
+          const recovery = readTransientRecoveryContractFromRun(latestRun);
+          await providerAdmission.settle({ companyId: run.companyId, runId: run.id,
+            outcome: recovery?.errorFamily ?? latestRun.status,
+            ...(recovery ? { providerFailure: { retryNotBefore: recovery.retryNotBefore } } : {}),
+          }).catch((err) => logger.error({ err, runId: run.id }, "provider receipt settlement failed during teardown"));
+        }
         if (latestRun && isHeartbeatRunTerminalStatus(latestRun.status)) {
           await db
             .update(heartbeatRuns)

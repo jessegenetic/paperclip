@@ -1,10 +1,10 @@
 # Durable provider admission (implementation in progress)
 
-This increment adds a database-backed admission service, queued-run preflight,
-and a scheduler promotion floor. Known pool deadlines now park queued runs
-before resource claims. Final provider entry and failure settlement are not yet
-wired, so live failures do not populate these pools. Do not adopt this draft as
-a complete burn-control fix.
+The draft includes a database-backed admission service, queued-run preflight,
+a scheduler promotion floor, and final legacy adapter admission. Legacy results
+persist shared provider cooldowns before terminal publication or issue release.
+Native provider-turn admission and settlement are still unfinished. Do not adopt
+this draft as a complete burn-control fix.
 
 ## Admission contract
 
@@ -68,6 +68,24 @@ only an early resource-saving check. The final provider handoff must reserve
 again, including native replacements; active native reattachment is a separate
 ownership operation.
 
+## Legacy provider entry
+
+`reserve(..., { legacyDispatchOwner })` admits the owning legacy controller after
+workspace and credential preparation. It rejects expired/wrong ownership, native
+rows and process markers. A denial atomically parks the same run and returns its
+wake to queued, retaining input and issue ownership. The executor then releases
+preparation resources and leaves the agent idle. No retry attempt is consumed.
+The normal issue/interaction dispatch gate still applies after reservation.
+Reservation happens outside that gate to preserve pool/run lock ordering.
+
+Structured legacy results settle before workspace finalization, terminal run
+publication and issue release. Provider quota and transient-upstream results
+set a cooldown even when no automatic retry budget remains. Thrown adapter
+errors without a structured deadline record a failure without inventing quota
+classification. A late settlement is idempotent. A crash before result storage
+remains an unresolved recovery boundary; this patch does not claim durable
+native result replay or atomic provider-start evidence.
+
 ## Local burn-report data contract
 
 These tables hold local instance data, not outbound telemetry. Every read must
@@ -96,11 +114,9 @@ ranges are not independently verified by these receipts.
 
 ## Remaining runtime work
 
-- Integrate checks at dispatch for legacy, native, direct, scheduled and restart
-  paths. Resolve trusted credential identity before considering finer pools.
-- Complete final dispatch deferral and distinct-wake coalescing. Queued preflight
-  and scheduled promotion are wired; active ownership and post-preparation
-  races still need coverage. Timers must not launch LLMs to check eligibility.
+- Complete native dispatch/restart checks and all-path regression coverage. Resolve trusted credential identity before considering finer pools.
+- Complete native deferral and distinct-wake coalescing. Queued preflight,
+  scheduled promotion and legacy post-preparation checks are wired. Timers must not launch LLMs to check eligibility.
 - Keep native reattachment distinct from new provider work. A reservation alone
   cannot prove whether a process started before a crash. Retain existing
   ownership/reconciliation guards; never replay uncertain provider work.

@@ -52,7 +52,7 @@ export async function deferredProviderEligibility(
 /** Every decision and its receipt commit together. No provider work runs in this transaction. */
 export function providerAdmissionService(db: Db) {
   return {
-    async reserve(companyId: string, runId: string, now = new Date(), options: { parkDeniedRun?: boolean; checkOnly?: boolean } = {}) {
+    async reserve(companyId: string, runId: string, now = new Date(), options: { parkDeniedRun?: boolean; checkOnly?: boolean; legacyDispatchOwner?: string } = {}) {
       return db.transaction(async (tx) => {
         const pool = await lockPool(tx, companyId, now);
         const [run] = await tx.select().from(heartbeatRuns).where(and(
@@ -62,6 +62,15 @@ export function providerAdmissionService(db: Db) {
         // Parking belongs before claim/startup. Never erase ownership of a
         // running native or legacy process merely because its pool is cooling.
         if ((options.parkDeniedRun || options.checkOnly) && run.status !== "queued") return { kind: "stale" as const };
+        // Only the owning legacy controller may park after preparation. A
+        // process marker or native runtime means this is no longer a safe
+        // pre-entry boundary. A receipt alone never authorizes replay.
+        if (options.legacyDispatchOwner && (run.status !== "running" ||
+          run.runtimeMode !== "legacy" || run.controllerBootId !== options.legacyDispatchOwner ||
+          !run.controllerLeaseExpiresAt || run.controllerLeaseExpiresAt <= now ||
+          run.processPid !== null || run.processGroupId !== null || run.processStartedAt !== null)) {
+          return { kind: "stale" as const };
+        }
         // Resolve authority from persisted runtime records; wake JSON never selects an account or exemption.
         const [agent] = await tx.select({ id: agents.id }).from(agents).where(and(
           eq(agents.companyId, companyId), eq(agents.id, run.agentId),
@@ -95,14 +104,19 @@ export function providerAdmissionService(db: Db) {
         await tx.insert(providerDispatchReceipts).values(values).onConflictDoUpdate({
           target: providerDispatchReceipts.runId, set: values,
         });
-        if (!decision.eligible && options.parkDeniedRun) {
+        if (!decision.eligible && (options.parkDeniedRun || options.legacyDispatchOwner)) {
           // The receipt and timer commit together. Keep the same run, wake,
           // context, issue lock, and retry budget; a denial is not a failure.
           await tx.update(heartbeatRuns).set({ status: "scheduled_retry",
+            ...(options.legacyDispatchOwner ? { startedAt: null, executionControlDeadlineAt: null } : {}),
             scheduledRetryAt: decision.eligibleAt,
             scheduledRetryReason: run.scheduledRetryReason ?? PROVIDER_ADMISSION_RETRY_REASON,
             updatedAt: now,
           }).where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId)));
+        }
+        if (!decision.eligible && options.legacyDispatchOwner && run.wakeupRequestId) {
+          await tx.update(agentWakeupRequests).set({ status: "queued", claimedAt: null, updatedAt: now })
+            .where(and(eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.id, run.wakeupRequestId)));
         }
         return decision.eligible
           ? { kind: "admitted" as const, eligibleAt: decision.eligibleAt }

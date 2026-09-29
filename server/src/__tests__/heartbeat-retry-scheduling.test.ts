@@ -269,6 +269,30 @@ describeEmbeddedPostgres("heartbeat bounded retry scheduling", () => {
     expect(wake?.status).toBe("queued");
   });
 
+  it("rechecks after preparation and parks without calling the adapter or consuming a slot", async () => {
+    const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
+    const now = new Date(), reset = new Date(now.getTime() + 86_400_000);
+    await seedRetryFixture({ runId, companyId, agentId, now, errorCode: "provider_quota", adapterType: PROVIDER_QUOTA_TEST_ADAPTER });
+    let checks = 0;
+    const racing = heartbeatService(db, {
+      beforeProviderAdmissionCheck: async () => {
+        checks++;
+        await db.insert(providerAdmissionPools).values({ companyId, poolKey: "company-runtime-accounts:v1", cooldownUntil: reset })
+          .onConflictDoUpdate({ target: [providerAdmissionPools.companyId, providerAdmissionPools.poolKey], set: { cooldownUntil: reset } });
+      },
+    });
+    const run = await racing.invoke(agentId, "on_demand", { message: "Keep approval gates." }, "manual");
+    await racing.drainActiveRunExecutions();
+    expect(checks).toBe(1);
+    expect(await racing.getRun(run!.id)).toMatchObject({ status: "scheduled_retry", scheduledRetryAt: reset,
+      errorCode: null, startedAt: null, contextSnapshot: { message: "Keep approval gates." } });
+    const [receipt] = await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, run!.id));
+    expect(receipt).toMatchObject({ admittedAt: null, outcome: null, suppressionCount: 1 });
+    const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
+    expect(agent?.status).toBe("idle");
+    expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.retryOfRunId, run!.id))).toHaveLength(0);
+  });
+
   it("persists provider jitter across duplicate scheduling and service restart", async () => {
     const runId = randomUUID(), companyId = randomUUID(), agentId = randomUUID();
     const now = new Date("2026-09-29T12:00:00Z");
@@ -364,6 +388,20 @@ describeEmbeddedPostgres("heartbeat bounded retry scheduling", () => {
     const failedRun = await waitForRunToFinish(heartbeat, run!.id);
     expect(failedRun?.status).toBe("failed");
     expect(failedRun?.errorCode).toBe("provider_quota");
+    const [receipt] = await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, run!.id));
+    expect(receipt?.admittedAt).toBeInstanceOf(Date);
+    expect(receipt).toMatchObject({ outcome: "provider_quota" });
+    const [pool] = await db.select().from(providerAdmissionPools).where(eq(providerAdmissionPools.companyId, companyId));
+    expect(pool?.cooldownUntil?.toISOString()).toBe("2030-04-22T21:00:00.000Z");
+    // A fresh manual wake after service reconstruction observes the failure
+    // floor even though it is unrelated to the automatic retry chain.
+    await heartbeat.drainActiveRunExecutions();
+    const restarted = heartbeatService(db);
+    const fresh = await restarted.invoke(agentId, "on_demand", { message: "Owner direction stays queued." }, "manual");
+    await restarted.drainActiveRunExecutions();
+    expect(await restarted.getRun(fresh!.id)).toMatchObject({ status: "scheduled_retry",
+      contextSnapshot: { message: "Owner direction stays queued." }, errorCode: null });
+
     expect((failedRun?.resultJson as Record<string, unknown> | null)?.errorFamily).toBe("provider_quota");
 
     await expect

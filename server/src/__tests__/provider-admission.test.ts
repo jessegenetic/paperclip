@@ -43,6 +43,34 @@ describe("durable provider admission (disposable Postgres, no providers)", () =>
     expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, id)))[0]?.status).toBe("scheduled_retry");
   });
 
+  it("parks only the live owning legacy controller before process entry", async () => {
+    const f = await fixture(), failed = await f.run(), owner = randomUUID();
+    await providerAdmissionService(db).reserve(f.companyId, failed, now);
+    await providerAdmissionService(db).settle({ companyId: f.companyId, runId: failed, outcome: "provider_quota",
+      providerFailure: {}, now, random: () => 0.5 });
+    const id = await f.run(true, { message: "Do not deploy. Owner approval is required." });
+    await db.update(heartbeatRuns).set({ controllerBootId: owner,
+      controllerLeaseExpiresAt: new Date(now.getTime() + 60_000), startedAt: now }).where(eq(heartbeatRuns.id, id));
+    const service = providerAdmissionService(db);
+    expect((await service.reserve(f.companyId, id, now, { legacyDispatchOwner: randomUUID() })).kind).toBe("stale");
+    for (const patch of [{ runtimeMode: "native" }, { processPid: 123 }, { processGroupId: 123 },
+      { processStartedAt: now }, { controllerLeaseExpiresAt: now }]) {
+      await db.update(heartbeatRuns).set(patch).where(eq(heartbeatRuns.id, id));
+      expect((await service.reserve(f.companyId, id, now, { legacyDispatchOwner: owner })).kind).toBe("stale");
+      await db.update(heartbeatRuns).set({ runtimeMode: "legacy", processPid: null, processGroupId: null,
+        processStartedAt: null, controllerLeaseExpiresAt: new Date(now.getTime() + 60_000) }).where(eq(heartbeatRuns.id, id));
+    }
+    const results = await Promise.all(Array.from({ length: 8 }, () => service.reserve(f.companyId, id, now,
+      { legacyDispatchOwner: owner })));
+    expect(results.filter((r) => r.kind === "deferred")).toHaveLength(1);
+    const [parked] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, id));
+    expect(parked).toMatchObject({ status: "scheduled_retry", startedAt: null,
+      scheduledRetryAt: new Date(now.getTime() + 300_000),
+      contextSnapshot: { message: "Do not deploy. Owner approval is required." } });
+    const [wake] = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, parked!.wakeupRequestId!));
+    expect(wake?.status).toBe("queued");
+  });
+
   it("reserves a run once across 16 concurrent schedulers and a service restart", async () => {
     const f = await fixture(), id = await f.run();
     const results = await Promise.all(Array.from({ length: 16 }, () => providerAdmissionService(db).reserve(f.companyId, id, now)));
