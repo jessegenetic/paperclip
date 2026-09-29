@@ -34,6 +34,28 @@ An existing later deadline is never shortened. Replaying settlement after a
 restart does not extend a deadline or increment the counter again. A success
 does not clear a cooldown that is still in the future.
 
+## Durable queued-run deferral
+
+`reserve(companyId, runId, now, { parkDeniedRun: true })` is for a queued run
+before runtime ownership is claimed. A denial commits the receipt and changes
+that same run to `scheduled_retry` in one transaction. Its deadline is the later
+of the shared cooldown and rolling cap. The wake, context, retry reason and
+attempt count remain intact. This mode refuses running rows; it must never
+park an active process or remove its ownership evidence.
+
+`resumeDeferred(companyId, runId, now)` is a deterministic timer operation.
+It rechecks the durable receipt, shared floor and rolling window under the pool
+lock. Later failures extend the stored deadline. Repeated early timer checks do
+not add suppressions or provider attempts. At eligibility, one concurrent caller
+changes the same run to `queued`; the other callers observe a stale request.
+Cancellation and company boundaries remain effective.
+
+Queueing does not grant provider permission. Runtime integration must apply its
+normal pause, budget, assignment, ownership and dependency gates, then reserve
+again at the dispatch boundary. Another failure or dispatch can make a queued
+run ineligible after the timer check. These service methods are not yet wired
+into the runtime scheduler. Distinct wake coalescing still needs integration.
+
 ## Local burn-report data contract
 
 These tables hold local instance data, not outbound telemetry. Every read must
@@ -45,7 +67,7 @@ filter by the authenticated company. Join receipts to heartbeat runs by both
 | `provider_admission_pools.cooldown_until` | Shared provider deadline; nullable when no failure is known |
 | `provider_dispatch_receipts.admitted_at` | Reservation time; null means no dispatch was admitted |
 | `eligible_at` | Eligibility computed at the latest check; a later pool failure can extend it |
-| `suppression_count` | Number of deferred checks of this run, not number of distinct user messages |
+| `suppression_count` | Number of denied reservation checks; excludes timer observations and is not a count of distinct user messages |
 | `suppression_reason` | `provider_cooldown`, `issue_dispatch_cap`, or both |
 | `automated` | Derived from persisted wake actor authority |
 | `outcome`, `settled_at` | Settled result; null means unavailable or unsettled |
@@ -64,9 +86,9 @@ ranges are not independently verified by these receipts.
 
 - Integrate checks at dispatch for legacy, native, direct, scheduled and restart
   paths. Resolve trusted credential identity before considering finer pools.
-- Atomically park deferred runs and reuse their eligible resume. Preserve queued
-  human directions and existing issue coalescing. Timers must not launch LLMs
-  to check eligibility.
+- Wire the tested atomic deferral and resume methods into the scheduler. Preserve
+  queued human directions and existing issue coalescing. Timers must not launch
+  LLMs to check eligibility.
 - Keep native reattachment distinct from new provider work. A reservation alone
   cannot prove whether a process started before a crash. Retain existing
   ownership/reconciliation guards; never replay uncertain provider work.

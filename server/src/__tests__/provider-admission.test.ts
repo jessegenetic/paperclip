@@ -21,12 +21,12 @@ describe("durable provider admission (disposable Postgres, no providers)", () =>
     await db.insert(companies).values({ id: companyId, name: "Admission test", issuePrefix: `T${companyId.slice(0, 7)}` });
     await db.insert(agents).values({ id: agentId, companyId, name: "Test", role: "engineer", adapterType: "codex_local" });
     await db.insert(issues).values({ id: issueId, companyId, title: "Admission test", status: "in_progress", assigneeAgentId: agentId });
-    async function run(human = false, context: Record<string, unknown> = {}) {
+    async function run(human = false, context: Record<string, unknown> = {}, status = "running") {
       const runId = randomUUID(), wakeId = randomUUID();
       await db.insert(agentWakeupRequests).values({ id: wakeId, companyId, agentId, source: "on_demand",
         requestedByActorType: human ? "user" : "agent", payload: context });
       await db.insert(heartbeatRuns).values({ id: runId, companyId, agentId, wakeupRequestId: wakeId,
-        status: "running", contextSnapshot: { ...context, issueId } });
+        status, contextSnapshot: { ...context, issueId } });
       return runId;
     }
     return { companyId, agentId, issueId, run };
@@ -125,5 +125,76 @@ describe("durable provider admission (disposable Postgres, no providers)", () =>
     await expect(providerAdmissionService(db).reserve(f.companyId, id, now)).rejects.toThrow("issue boundary mismatch");
     expect(await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, id))).toHaveLength(0);
     expect(await db.select().from(providerAdmissionPools).where(eq(providerAdmissionPools.companyId, f.companyId))).toHaveLength(0);
+  });
+
+  it("atomically parks one queued wake and resumes it once after restart without consuming a dispatch", async () => {
+    const f = await fixture(), failed = await f.run();
+    await providerAdmissionService(db).reserve(f.companyId, failed, now);
+    await providerAdmissionService(db).settle({ companyId: f.companyId, runId: failed,
+      outcome: "provider_quota", providerFailure: {}, now, random: () => 0.5 });
+    const id = await f.run(true, { message: "Keep the approval gate. Do not deploy." }, "queued");
+    const before = (await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, id)))[0]!;
+    const results = await Promise.all(Array.from({ length: 12 }, () =>
+      providerAdmissionService(db).reserve(f.companyId, id, now, { parkDeniedRun: true })));
+    expect(results.filter((r) => r.kind === "deferred")).toHaveLength(1);
+    const parked = (await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, id)))[0]!;
+    expect(parked).toMatchObject({ status: "scheduled_retry", scheduledRetryReason: "provider_admission",
+      scheduledRetryAttempt: 0, wakeupRequestId: before.wakeupRequestId, contextSnapshot: before.contextSnapshot });
+    expect((await providerAdmissionService(db).resumeDeferred(f.companyId, id,
+      new Date(now.getTime() + 299_999))).kind).toBe("deferred");
+    const boundary = new Date(now.getTime() + 300_000);
+    const resumes = await Promise.all(Array.from({ length: 12 }, () =>
+      providerAdmissionService(db).resumeDeferred(f.companyId, id, boundary)));
+    expect(resumes.filter((r) => r.kind === "queued")).toHaveLength(1);
+    const receipt = (await db.select().from(providerDispatchReceipts).where(eq(providerDispatchReceipts.runId, id)))[0]!;
+    expect(receipt).toMatchObject({ admittedAt: null, suppressionCount: 1 });
+    expect((await providerAdmissionService(db).reserve(f.companyId, id, boundary, { parkDeniedRun: true })).kind).toBe("admitted");
+  });
+
+  it("extends a parked deadline on another in-flight failure and ignores a manually shortened timer", async () => {
+    const f = await fixture(), failed = await f.run(), inflight = await f.run();
+    for (const id of [failed, inflight]) await providerAdmissionService(db).reserve(f.companyId, id, now);
+    await providerAdmissionService(db).settle({ companyId: f.companyId, runId: failed,
+      outcome: "provider_quota", providerFailure: {}, now, random: () => 0.5 });
+    const id = await f.run(false, {}, "queued");
+    await providerAdmissionService(db).reserve(f.companyId, id, now, { parkDeniedRun: true });
+    const reset = new Date("2030-01-05T12:00:00Z");
+    await providerAdmissionService(db).settle({ companyId: f.companyId, runId: inflight,
+      outcome: "provider_quota", providerFailure: { retryNotBefore: reset }, now, random: () => 0.5 });
+    await db.update(heartbeatRuns).set({ scheduledRetryAt: now }).where(eq(heartbeatRuns.id, id));
+    expect(await providerAdmissionService(db).resumeDeferred(f.companyId, id, new Date(now.getTime() + 300_000)))
+      .toEqual({ kind: "deferred", eligibleAt: reset });
+    const parked = (await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, id)))[0]!;
+    expect(parked.scheduledRetryAt).toEqual(reset);
+    expect(parked.status).toBe("scheduled_retry");
+  });
+
+  it("rechecks the rolling cap after timer promotion and leaves running ownership intact", async () => {
+    const f = await fixture();
+    for (let index = 0; index < 4; index++) await providerAdmissionService(db).reserve(f.companyId, await f.run(), now);
+    const id = await f.run(false, {}, "queued");
+    await db.update(heartbeatRuns).set({ scheduledRetryAttempt: 2, scheduledRetryReason: "provider_quota" })
+      .where(eq(heartbeatRuns.id, id));
+    expect((await providerAdmissionService(db).reserve(f.companyId, id, now, { parkDeniedRun: true })).kind).toBe("deferred");
+    const boundary = new Date(now.getTime() + 3_600_000);
+    expect((await providerAdmissionService(db).resumeDeferred(f.companyId, id, boundary)).kind).toBe("queued");
+    expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, id)))[0])
+      .toMatchObject({ scheduledRetryAttempt: 2, scheduledRetryReason: "provider_quota" });
+    for (let index = 0; index < 4; index++) await providerAdmissionService(db).reserve(f.companyId, await f.run(), boundary);
+    expect((await providerAdmissionService(db).reserve(f.companyId, id, boundary, { parkDeniedRun: true })).kind).toBe("deferred");
+    const running = await f.run();
+    expect((await providerAdmissionService(db).reserve(f.companyId, running, boundary, { parkDeniedRun: true })).kind).toBe("stale");
+    expect((await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, running)))[0]?.status).toBe("running");
+  });
+
+  it("does not revive a cancelled deferred run or promote across companies", async () => {
+    const f = await fixture(), other = await fixture();
+    for (let index = 0; index < 4; index++) await providerAdmissionService(db).reserve(f.companyId, await f.run(), now);
+    const id = await f.run(false, {}, "queued");
+    await providerAdmissionService(db).reserve(f.companyId, id, now, { parkDeniedRun: true });
+    const boundary = new Date(now.getTime() + 3_600_000);
+    expect((await providerAdmissionService(db).resumeDeferred(other.companyId, id, boundary)).kind).toBe("stale");
+    await db.update(heartbeatRuns).set({ status: "cancelled" }).where(eq(heartbeatRuns.id, id));
+    expect((await providerAdmissionService(db).resumeDeferred(f.companyId, id, boundary)).kind).toBe("stale");
   });
 });

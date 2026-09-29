@@ -6,6 +6,18 @@ import { AUTOMATED_ISSUE_DISPATCH_WINDOW_MS, SHARED_PROVIDER_POOL,
 import { computeProviderRetrySchedule } from "./provider-retry-policy.js";
 
 type AdmissionTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+export const PROVIDER_ADMISSION_RETRY_REASON = "provider_admission";
+
+async function dispatchWindow(tx: AdmissionTransaction, companyId: string, issueId: string | null, now: Date) {
+  if (!issueId) return [];
+  const rows = await tx.select({ at: providerDispatchReceipts.admittedAt })
+    .from(providerDispatchReceipts).where(and(
+      eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.issueId, issueId),
+      eq(providerDispatchReceipts.automated, true), isNotNull(providerDispatchReceipts.admittedAt),
+      gt(providerDispatchReceipts.admittedAt, new Date(now.getTime() - AUTOMATED_ISSUE_DISPATCH_WINDOW_MS)),
+    ));
+  return rows.flatMap(({ at }) => at ? [at] : []);
+}
 
 async function lockPool(tx: AdmissionTransaction, companyId: string, now: Date) {
   await tx.insert(providerAdmissionPools).values({ companyId, poolKey: SHARED_PROVIDER_POOL, updatedAt: now })
@@ -20,13 +32,16 @@ async function lockPool(tx: AdmissionTransaction, companyId: string, now: Date) 
 /** Every decision and its receipt commit together. No provider work runs in this transaction. */
 export function providerAdmissionService(db: Db) {
   return {
-    async reserve(companyId: string, runId: string, now = new Date()) {
+    async reserve(companyId: string, runId: string, now = new Date(), options: { parkDeniedRun?: boolean } = {}) {
       return db.transaction(async (tx) => {
         const pool = await lockPool(tx, companyId, now);
         const [run] = await tx.select().from(heartbeatRuns).where(and(
           eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId),
         )).for("update");
         if (!run || !["queued", "running"].includes(run.status)) return { kind: "stale" as const };
+        // Parking belongs before claim/startup. Never erase ownership of a
+        // running native or legacy process merely because its pool is cooling.
+        if (options.parkDeniedRun && run.status !== "queued") return { kind: "stale" as const };
         // Resolve authority from persisted runtime records; wake JSON never selects an account or exemption.
         const [agent] = await tx.select({ id: agents.id }).from(agents).where(and(
           eq(agents.companyId, companyId), eq(agents.id, run.agentId),
@@ -48,14 +63,8 @@ export function providerAdmissionService(db: Db) {
         // A receipt is an at-most-once dispatch reservation. A duplicate scheduler
         // cannot use it to launch the same provider turn twice.
         if (existing?.admittedAt) return { kind: "duplicate" as const };
-        const dispatches = issue ? await tx.select({ at: providerDispatchReceipts.admittedAt })
-          .from(providerDispatchReceipts).where(and(
-            eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.issueId, issue.id),
-            eq(providerDispatchReceipts.automated, true), isNotNull(providerDispatchReceipts.admittedAt),
-            gt(providerDispatchReceipts.admittedAt, new Date(now.getTime() - AUTOMATED_ISSUE_DISPATCH_WINDOW_MS)),
-          )) : [];
         const decision = providerAdmissionEligibility({ now, cooldownUntil: pool.cooldownUntil,
-          automated, automatedDispatches: dispatches.flatMap(({ at }) => at ? [at] : []) });
+          automated, automatedDispatches: await dispatchWindow(tx, companyId, issue?.id ?? null, now) });
         const values = { companyId, runId, issueId: issue?.id ?? null, poolKey: SHARED_PROVIDER_POOL,
           automated, admittedAt: decision.eligible ? now : null, eligibleAt: decision.eligibleAt,
           suppressionCount: (existing?.suppressionCount ?? 0) + (decision.eligible ? 0 : 1),
@@ -63,9 +72,53 @@ export function providerAdmissionService(db: Db) {
         await tx.insert(providerDispatchReceipts).values(values).onConflictDoUpdate({
           target: providerDispatchReceipts.runId, set: values,
         });
+        if (!decision.eligible && options.parkDeniedRun) {
+          // The receipt and timer commit together. Keep the same run, wake,
+          // context, issue lock, and retry budget; a denial is not a failure.
+          await tx.update(heartbeatRuns).set({ status: "scheduled_retry",
+            scheduledRetryAt: decision.eligibleAt,
+            scheduledRetryReason: run.scheduledRetryReason ?? PROVIDER_ADMISSION_RETRY_REASON,
+            updatedAt: now,
+          }).where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId)));
+        }
         return decision.eligible
           ? { kind: "admitted" as const, eligibleAt: decision.eligibleAt }
           : { kind: "deferred" as const, eligibleAt: decision.eligibleAt, reasons: decision.reasons };
+      });
+    },
+
+    /** Timer-only check. Queueing is not dispatch permission: reserve must run
+     * again immediately before dispatch, including after a concurrent failure.
+     * Returning the same run to queued makes duplicate timer claims inert. */
+    async resumeDeferred(companyId: string, runId: string, now = new Date()) {
+      return db.transaction(async (tx) => {
+        const pool = await lockPool(tx, companyId, now);
+        const [run] = await tx.select().from(heartbeatRuns).where(and(
+          eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId),
+        )).for("update");
+        if (!run || run.status !== "scheduled_retry") return { kind: "stale" as const };
+        const [receipt] = await tx.select().from(providerDispatchReceipts).where(and(
+          eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.runId, runId),
+        ));
+        if (!receipt || receipt.admittedAt) return { kind: "stale" as const };
+        const decision = providerAdmissionEligibility({ now, cooldownUntil: pool.cooldownUntil,
+          automated: receipt.automated,
+          automatedDispatches: await dispatchWindow(tx, companyId, receipt.issueId, now) });
+        // Persist a newly extended floor once, without counting each timer
+        // observation as another suppressed wake or provider attempt.
+        const eligibleAt = new Date(Math.max(decision.eligibleAt.getTime(), receipt.eligibleAt.getTime()));
+        if (eligibleAt > now) {
+          if (run.scheduledRetryAt?.getTime() !== eligibleAt.getTime()) {
+            await tx.update(heartbeatRuns).set({ scheduledRetryAt: eligibleAt, updatedAt: now })
+              .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId)));
+            await tx.update(providerDispatchReceipts).set({ eligibleAt, updatedAt: now })
+              .where(and(eq(providerDispatchReceipts.companyId, companyId), eq(providerDispatchReceipts.runId, runId)));
+          }
+          return { kind: "deferred" as const, eligibleAt };
+        }
+        await tx.update(heartbeatRuns).set({ status: "queued", scheduledRetryAt: null, updatedAt: now })
+          .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.id, runId)));
+        return { kind: "queued" as const };
       });
     },
 
